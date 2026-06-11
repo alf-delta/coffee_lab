@@ -46,10 +46,13 @@ create index if not exists batches_created_at_idx
 -- В проде замените на политики по auth.uid().
 alter table public.batches enable row level security;
 
+-- Доступ только для авторизованных (invite-only). Аноним — без доступа.
 drop policy if exists "anon full access" on public.batches;
-create policy "anon full access"
+drop policy if exists "authenticated access" on public.batches;
+create policy "authenticated access"
   on public.batches
   for all
+  to authenticated
   using (true)
   with check (true);
 
@@ -71,9 +74,11 @@ create table if not exists public.bellwether_profiles (
 alter table public.bellwether_profiles enable row level security;
 
 drop policy if exists "anon full access" on public.bellwether_profiles;
-create policy "anon full access"
+drop policy if exists "authenticated access" on public.bellwether_profiles;
+create policy "authenticated access"
   on public.bellwether_profiles
   for all
+  to authenticated
   using (true)
   with check (true);
 
@@ -112,9 +117,11 @@ create table if not exists public.green_beans (
 alter table public.green_beans enable row level security;
 
 drop policy if exists "anon full access" on public.green_beans;
-create policy "anon full access"
+drop policy if exists "authenticated access" on public.green_beans;
+create policy "authenticated access"
   on public.green_beans
   for all
+  to authenticated
   using (true)
   with check (true);
 

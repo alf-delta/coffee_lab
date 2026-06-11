@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Plus, Coffee, Database, HardDrive, SlidersHorizontal, X, Bean } from 'lucide-react'
+import { Plus, Coffee, Database, HardDrive, SlidersHorizontal, X, Bean, LogOut, Loader2 } from 'lucide-react'
 import StatsBar from './components/StatsBar'
 import CalendarPanel from './components/CalendarPanel'
 import BatchCard from './components/BatchCard'
@@ -8,12 +8,14 @@ import AddBatchModal from './components/AddBatchModal'
 import BatchDetail from './components/BatchDetail'
 import ProfilesModal from './components/ProfilesModal'
 import BeansModal from './components/BeansModal'
+import Login from './components/Login'
 import {
   listBatches, createBatch, updateBatch, deleteBatch,
   listProfiles, createProfile, updateProfile, deleteProfile,
   listBeans, createBean, updateBean, deleteBean,
   storageMode,
 } from './lib/storage'
+import { authEnabled, getSession, onAuthChange, signOut } from './lib/auth'
 import { effectiveStatus, readyDate, serviceDate, formatDate } from './lib/outgassing'
 import { STATUS } from './data/constants'
 
@@ -29,6 +31,9 @@ const batchEventDays = (b) => {
 }
 
 export default function App() {
+  // session: undefined = проверяем; null = не залогинен; объект = сессия.
+  // В local-режиме (нет Supabase) гейт отключён → сразу 'local'.
+  const [session, setSession] = useState(authEnabled ? undefined : 'local')
   const [batches, setBatches] = useState([])
   const [profiles, setProfiles] = useState([])
   const [beans, setBeans] = useState([])
@@ -51,7 +56,17 @@ export default function App() {
     setSelectedDay(key)
   }
 
+  // отслеживаем сессию Supabase (только когда авторизация включена)
   useEffect(() => {
+    if (!authEnabled) return
+    getSession().then((s) => setSession(s ?? null))
+    return onAuthChange((s) => setSession(s ?? null))
+  }, [])
+
+  // данные грузим только при наличии доступа (залогинен или local-режим)
+  useEffect(() => {
+    if (!session) return
+    setLoading(true)
     Promise.all([listBatches(), listProfiles(), listBeans()])
       .then(([b, p, g]) => {
         setBatches(b)
@@ -60,7 +75,7 @@ export default function App() {
       })
       .catch((e) => console.error('Ошибка загрузки', e))
       .finally(() => setLoading(false))
-  }, [])
+  }, [session])
 
   // обогащаем эффективным статусом (авто по дате)
   const enriched = useMemo(
@@ -162,6 +177,16 @@ export default function App() {
     }
   }
 
+  // ── Гейт авторизации (только в supabase-режиме) ──
+  if (authEnabled && session === undefined) {
+    return (
+      <div className="grid min-h-dvh place-items-center">
+        <Loader2 className="animate-spin text-coffee-soft" size={28} />
+      </div>
+    )
+  }
+  if (authEnabled && !session) return <Login />
+
   return (
     <div className="mx-auto min-h-dvh max-w-6xl px-4 pb-20 pt-6 sm:px-6 sm:pt-10">
       {/* шапка */}
@@ -205,6 +230,17 @@ export default function App() {
           >
             <Plus size={18} /> Новая партия
           </motion.button>
+          {authEnabled && session && (
+            <motion.button
+              whileTap={{ scale: 0.96 }}
+              onClick={signOut}
+              title={`Выйти${session.user?.email ? ` · ${session.user.email}` : ''}`}
+              aria-label="Выйти"
+              className="grid size-11 shrink-0 place-items-center rounded-full border border-coffee/15 bg-white/50 text-coffee-soft transition hover:bg-white/80 hover:text-coffee"
+            >
+              <LogOut size={17} />
+            </motion.button>
+          )}
         </div>
       </header>
 
