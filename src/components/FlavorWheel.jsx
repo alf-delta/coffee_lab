@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, RotateCcw, Check } from 'lucide-react'
-import { FLAVOR_WHEEL, flavorColor } from '../data/flavorWheel'
+import { X, RotateCcw, Check, ArrowLeft } from 'lucide-react'
+import { FLAVOR_WHEEL, FLAVOR_INDEX, flavorColor } from '../data/flavorWheel'
 
 // ── геометрия санбёрста (статична — считается один раз) ───────
 const CX = 500
@@ -109,11 +109,23 @@ export function FlavorChips({ flavors = [], onRemove, className = '' }) {
 
 export default function FlavorWheel({ open, selected = [], onClose, onSave }) {
   const [sel, setSel] = useState(() => new Set(selected))
+  // мобильный режим: null = колесо категорий, иначе — панель дескрипторов категории
+  const [zoomCat, setZoomCat] = useState(null)
 
   // пересинхронизация черновика при каждом открытии
   useEffect(() => {
-    if (open) setSel(new Set(selected))
+    if (open) {
+      setSel(new Set(selected))
+      setZoomCat(null)
+    }
   }, [open]) // eslint-disable-line
+
+  // сколько выбрано внутри категории (для бейджей на секторах)
+  const catCount = (catName) => {
+    let n = 0
+    for (const name of sel) if (FLAVOR_INDEX[name]?.category === catName) n++
+    return n
+  }
 
   const toggle = (name) =>
     setSel((prev) => {
@@ -171,10 +183,110 @@ export default function FlavorWheel({ open, selected = [], onClose, onSave }) {
               </div>
             </div>
 
-            {/* колесо; на мобильных — крупнее вьюпорта с горизонтальным скроллом,
-                иначе в сектор не попасть пальцем */}
-            <div className="min-h-0 flex-1 overflow-auto">
-              <svg viewBox="0 0 1000 1000" className="mx-auto block w-full min-w-[620px] max-w-[760px] sm:min-w-0">
+            {/* ── Мобильный режим: колесо категорий → панель дескрипторов ── */}
+            {/* короткие подписи для овервью: длинные не влезают радиально */}
+            <div className="min-h-0 flex-1 overflow-y-auto sm:hidden">
+              {!zoomCat ? (
+                <>
+                  <svg viewBox="0 0 1000 1000" className="mx-auto block w-full max-w-[420px]">
+                    {SEGMENTS.cats.map((c) => {
+                      const mid = (c.a0 + c.a1) / 2
+                      const lb = radialLabel(mid, 295, true)
+                      const n = catCount(c.name)
+                      const [bx, by] = polar(395, mid)
+                      return (
+                        <g key={c.name} onClick={() => setZoomCat(c.name)} style={{ cursor: 'pointer' }}>
+                          <path d={arcPath(150, 440, c.a0, c.a1)} fill={c.color} stroke="#fff" strokeWidth="3" />
+                          <text
+                            x={lb.x} y={lb.y}
+                            transform={`rotate(${lb.rotate} ${lb.x} ${lb.y})`}
+                            textAnchor={lb.anchor} dominantBaseline="middle"
+                            fontSize="34" fontWeight="700" fill="#fff"
+                            style={{ pointerEvents: 'none' }}
+                          >
+                            {c.name === 'Ореховый/Какао' ? 'Орех · какао' : c.name}
+                          </text>
+                          {n > 0 && (
+                            <g style={{ pointerEvents: 'none' }}>
+                              <circle cx={bx} cy={by} r="27" fill="#fff" />
+                              <text x={bx} y={by + 1} textAnchor="middle" dominantBaseline="middle"
+                                fontSize="30" fontWeight="700" fill={c.color}>
+                                {n}
+                              </text>
+                            </g>
+                          )}
+                        </g>
+                      )
+                    })}
+                  </svg>
+                  <p className="mt-1 text-center text-xs text-coffee-soft">
+                    Нажмите на категорию, чтобы выбрать дескрипторы
+                  </p>
+                </>
+              ) : (
+                (() => {
+                  const cat = FLAVOR_WHEEL.find((c) => c.name === zoomCat)
+                  if (!cat) return null
+                  // листья 2-го уровня («Чёрный чай», «Бобовый»…) — одной строкой сверху
+                  const looseLeaves = cat.children.filter((s) => !s.children)
+                  const groups = cat.children.filter((s) => s.children)
+                  const chip = (leaf) => {
+                    const on = sel.has(leaf.name)
+                    // на светлых плашках (Лимон, Бумажный…) — тёмный текст
+                    const lightFill = labelColor(leaf.color) !== leaf.color
+                    return (
+                      <button
+                        type="button"
+                        key={leaf.name}
+                        onClick={() => toggle(leaf.name)}
+                        className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm transition"
+                        style={
+                          on
+                            ? { background: leaf.color, color: lightFill ? '#4b3621' : '#fff', border: '1px solid transparent', fontWeight: 600 }
+                            : { background: 'rgba(255,255,255,0.55)', color: '#3c2f25', border: '1px solid rgba(111,78,55,0.18)' }
+                        }
+                      >
+                        {!on && (
+                          <span className="size-2.5 shrink-0 rounded-full" style={{ background: leaf.color }} />
+                        )}
+                        {on && <Check size={14} className="shrink-0" />}
+                        {leaf.name}
+                      </button>
+                    )
+                  }
+                  return (
+                    <div className="space-y-4">
+                      <button
+                        type="button"
+                        onClick={() => setZoomCat(null)}
+                        className="inline-flex items-center gap-2 rounded-full bg-white/50 px-3.5 py-2 text-sm font-semibold text-espresso transition hover:bg-white/80"
+                      >
+                        <ArrowLeft size={15} />
+                        <span className="size-3 rounded-full" style={{ background: cat.color }} />
+                        {cat.name}
+                        <span className="font-normal text-coffee-soft">· к категориям</span>
+                      </button>
+                      {looseLeaves.length > 0 && (
+                        <div className="flex flex-wrap gap-2">{looseLeaves.map(chip)}</div>
+                      )}
+                      {groups.map((sub) => (
+                        <div key={sub.name}>
+                          <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-coffee-soft">
+                            <span className="size-2.5 rounded-full" style={{ background: sub.color }} />
+                            {sub.name}
+                          </div>
+                          <div className="flex flex-wrap gap-2">{sub.children.map(chip)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })()
+              )}
+            </div>
+
+            {/* ── Десктоп: полный санбёрст ── */}
+            <div className="hidden min-h-0 flex-1 overflow-y-auto sm:block">
+              <svg viewBox="0 0 1000 1000" className="mx-auto block w-full max-w-[760px]">
                 {/* категории (внутреннее кольцо) — не выбираются */}
                 {SEGMENTS.cats.map((c) => {
                   const lb = radialLabel((c.a0 + c.a1) / 2, (R_HOLE + R_CAT) / 2, true)

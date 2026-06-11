@@ -321,7 +321,7 @@ export default function AnalysisWizard({ batch, profile, onClose, onRecord }) {
         <button
           onClick={() => setStep((s) => Math.max(0, s - 1))}
           disabled={step === 0}
-          className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-5 py-3 text-sm font-medium text-cream transition hover:bg-white/20 disabled:opacity-30"
+          className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-white/10 px-5 py-3 text-sm font-medium text-cream transition hover:bg-white/20 disabled:opacity-30"
         >
           <ChevronLeft size={18} /> Назад
         </button>
@@ -329,7 +329,7 @@ export default function AnalysisWizard({ batch, profile, onClose, onRecord }) {
         {step < last ? (
           <button
             onClick={() => setStep((s) => Math.min(last, s + 1))}
-            className="btn-gold inline-flex items-center gap-1.5 rounded-full px-6 py-3 text-sm font-semibold transition hover:brightness-105"
+            className="btn-gold inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-6 py-3 text-sm font-semibold transition hover:brightness-105"
           >
             Далее <ChevronRight size={18} />
           </button>
@@ -337,7 +337,7 @@ export default function AnalysisWizard({ batch, profile, onClose, onRecord }) {
           <button
             onClick={record}
             disabled={!allRated}
-            className="btn-gold inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
+            className="btn-gold inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-6 py-3 text-sm font-semibold transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Save size={17} /> Записать анализ
           </button>

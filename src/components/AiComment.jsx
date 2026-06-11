@@ -47,10 +47,10 @@ export default function AiComment({ batch, profile }) {
       </div>
 
       {/* инфографическая сетка, внутренний скролл */}
-      <div className="-mr-1.5 mt-2.5 grid min-h-0 flex-1 content-start grid-cols-2 gap-2 overflow-y-auto pr-1.5">
+      <div className="-mr-1.5 mt-2.5 grid min-h-0 flex-1 content-start grid-cols-1 gap-2 overflow-y-auto pr-1.5 sm:grid-cols-2">
         {/* hero — итог */}
         {hero && (
-          <div className="col-span-2 rounded-xl p-3" style={cardStyle(TONE[hero.tone].color)}>
+          <div className="rounded-xl p-3 sm:col-span-2" style={cardStyle(TONE[hero.tone].color)}>
             <div className="flex items-center gap-3">
               <div className="leading-none">
                 <span
@@ -94,7 +94,7 @@ export default function AiComment({ batch, profile }) {
           const t = TONE[it.tone] || TONE.info
           const hasValue = it.value != null && it.value !== ''
           return (
-            <div key={it.key} className="col-span-2 rounded-xl p-2.5" style={cardStyle(t.color)}>
+            <div key={it.key} className="rounded-xl p-2.5 sm:col-span-2" style={cardStyle(t.color)}>
               <div className="flex gap-2.5">
                 {hasValue ? (
                   <div className="shrink-0 text-center leading-none">

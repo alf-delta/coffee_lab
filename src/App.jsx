@@ -174,7 +174,7 @@ export default function App() {
           className="h-15 w-auto sm:h-18"
         />
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <span
             className="hidden items-center gap-1.5 rounded-full bg-white/50 px-3 py-1.5 text-xs text-coffee-soft sm:inline-flex"
             title={storageMode === 'supabase' ? 'Данные в Supabase' : 'Данные в localStorage'}
@@ -185,7 +185,7 @@ export default function App() {
           <motion.button
             whileTap={{ scale: 0.96 }}
             onClick={() => setBeansOpen(true)}
-            className="inline-flex items-center gap-2 rounded-full border border-coffee/15 bg-white/50 px-4 py-3 text-sm font-medium text-coffee transition hover:bg-white/80"
+            className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-coffee/15 bg-white/50 px-4 py-3 text-sm font-medium text-coffee transition hover:bg-white/80"
           >
             <Bean size={17} />
             <span className="hidden sm:inline">Зерно</span>
@@ -193,7 +193,7 @@ export default function App() {
           <motion.button
             whileTap={{ scale: 0.96 }}
             onClick={() => setProfilesOpen(true)}
-            className="inline-flex items-center gap-2 rounded-full border border-coffee/15 bg-white/50 px-4 py-3 text-sm font-medium text-coffee transition hover:bg-white/80"
+            className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-coffee/15 bg-white/50 px-4 py-3 text-sm font-medium text-coffee transition hover:bg-white/80"
           >
             <SlidersHorizontal size={17} />
             <span className="hidden sm:inline">Профили</span>
@@ -201,7 +201,7 @@ export default function App() {
           <motion.button
             whileTap={{ scale: 0.96 }}
             onClick={() => setAdding(true)}
-            className="btn-gold inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-semibold transition hover:brightness-105"
+            className="btn-gold inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-5 py-3 text-sm font-semibold transition hover:brightness-105"
           >
             <Plus size={18} /> Новая партия
           </motion.button>

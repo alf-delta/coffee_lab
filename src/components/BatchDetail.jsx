@@ -88,7 +88,7 @@ export default function BatchDetail({ batch, profiles = [], beans = [], onClose,
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: 16 }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className="relative z-10 mx-auto flex h-full w-full max-w-[1600px] flex-col gap-3"
+            className="relative z-10 mx-auto flex h-full w-full max-w-[1600px] flex-col gap-3 overflow-y-auto lg:overflow-visible"
           >
             {isReady ? (
               <AnalysisWizard
@@ -117,7 +117,7 @@ export default function BatchDetail({ batch, profiles = [], beans = [], onClose,
                 {!isOutgassing && isInService(batch) && !batch.in_service_at && (
                   <button
                     onClick={() => onUpdate(batch.id, { in_service_at: new Date().toISOString() })}
-                    className="btn-gold inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-semibold transition hover:brightness-105"
+                    className="btn-gold inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-5 py-3 text-sm font-semibold transition hover:brightness-105"
                   >
                     <Coffee size={16} /> Запущено в работу
                   </button>
@@ -187,8 +187,10 @@ export default function BatchDetail({ batch, profiles = [], beans = [], onClose,
               </div>
             ) : (
             <>
-            {/* ── Две зоны: исследование (тёмное, слева) / профиль (светлое, справа) ── */}
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto lg:grid lg:grid-cols-2 lg:overflow-hidden">
+            {/* ── Две зоны: исследование (тёмное, слева) / профиль (светлое, справа).
+                 На мобильных скроллится весь экран одним пластом (скролл на корне),
+                 внутренние скроллы зон — только на lg ── */}
+            <div className="flex flex-col gap-3 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-2 lg:overflow-hidden">
               {/* ЛЕВАЯ ЗОНА — исследование (лента без собственного скролла) */}
               <div className="flex min-h-0 flex-col gap-3 lg:h-full">
                 {/* ИИ-комментарий занимает всю свободную высоту, скролл внутри */}

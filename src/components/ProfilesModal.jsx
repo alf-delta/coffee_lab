@@ -395,7 +395,7 @@ export default function ProfilesModal({ open, profiles, onClose, onCreate, onUpd
                     <button
                       type="submit"
                       disabled={!valid}
-                      className="btn-gold flex-1 rounded-full py-3 text-sm font-semibold transition hover:brightness-105 disabled:opacity-40"
+                      className="btn-gold flex-1 whitespace-nowrap rounded-full py-3 text-sm font-semibold transition hover:brightness-105 disabled:opacity-40"
                     >
                       {view.id === 'new' ? 'Сохранить профиль' : 'Сохранить'}
                     </button>
