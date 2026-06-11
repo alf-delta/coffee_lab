@@ -2,12 +2,13 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, ChevronLeft, ChevronRight, Check, FlaskRound, Droplets,
-  Wine, StickyNote, ClipboardCheck, Target, AlertTriangle, CheckCircle2, Save,
+  Wine, StickyNote, ClipboardCheck, Target, AlertTriangle, CheckCircle2, Save, Aperture,
 } from 'lucide-react'
 import RadarChart from './RadarChart'
 import ScoreBadge from './ScoreBadge'
 import SliderRow from './SliderRow'
 import VoiceInput from './VoiceInput'
+import FlavorWheel, { FlavorChips } from './FlavorWheel'
 import { PARAMETERS, PARAM_KEYS, LAB_METRICS, defaultLabData } from '../data/constants'
 import { scoreSummary, validateBellwetherProfile, weightLoss } from '../lib/scoring'
 
@@ -35,6 +36,8 @@ export default function AnalysisWizard({ batch, profile, onClose, onRecord }) {
   const [labData, setLabData] = useState(batch.lab_data || defaultLabData())
   const [scores, setScores] = useState({}) // пусто — без предзаполнения
   const [notes, setNotes] = useState('')
+  const [flavors, setFlavors] = useState(batch.flavors || [])
+  const [wheelOpen, setWheelOpen] = useState(false)
 
   const setMetric = (k, v) => setLabData((d) => ({ ...d, [k]: v }))
   const setScore = (k, v) => setScores((s) => ({ ...s, [k]: v }))
@@ -57,7 +60,7 @@ export default function AnalysisWizard({ batch, profile, onClose, onRecord }) {
 
   const record = () => {
     if (!allRated) return
-    onRecord({ scores, lab_data: labData, notes })
+    onRecord({ scores, lab_data: labData, notes, flavors })
   }
 
   return (
@@ -194,13 +197,42 @@ export default function AnalysisWizard({ batch, profile, onClose, onRecord }) {
             {cur.key === 'sensory' && (
               <div className="space-y-4">
                 <VoiceInput onParsed={applyParsed} />
+
+                {/* колесо вкусов SCA: дескрипторы чашки */}
+                <div className="rounded-2xl border border-gold/25 bg-gold/5 p-3.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs text-coffee-soft">
+                      Вкусовые дескрипторы
+                      {flavors.length > 0 && (
+                        <span className="ml-1.5 font-semibold tabular-nums text-amber">
+                          {flavors.length}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setWheelOpen(true)}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-gold/15 px-3 py-1.5 text-xs font-semibold text-amber transition hover:bg-gold/25"
+                    >
+                      <Aperture size={14} /> Колесо вкусов
+                    </button>
+                  </div>
+                  {flavors.length > 0 && (
+                    <FlavorChips
+                      flavors={flavors}
+                      onRemove={(f) => setFlavors((prev) => prev.filter((x) => x !== f))}
+                      className="mt-2.5 justify-start"
+                    />
+                  )}
+                </div>
+
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-coffee-soft">Оценено параметров</span>
                   <span className="font-display text-base tabular-nums text-amber">
                     {ratedCount} / {PARAM_KEYS.length}
                   </span>
                 </div>
-                <div className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
                   {PARAMETERS.map((p) => {
                     const set = scores[p.key] != null
                     return (
@@ -230,7 +262,7 @@ export default function AnalysisWizard({ batch, profile, onClose, onRecord }) {
 
             {/* ── Предпросмотр ── */}
             {cur.key === 'review' && (
-              <div className="grid gap-5 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 <div className="mx-auto w-full max-w-[230px]">
                   <RadarChart scores={scores} />
                 </div>
@@ -257,6 +289,7 @@ export default function AnalysisWizard({ batch, profile, onClose, onRecord }) {
                       ))}
                     </div>
                   )}
+                  <FlavorChips flavors={flavors} />
                 </div>
 
                 <div className="sm:col-span-2">
@@ -310,6 +343,17 @@ export default function AnalysisWizard({ batch, profile, onClose, onRecord }) {
           </button>
         )}
       </div>
+
+      {/* интерактивное колесо вкусов SCA */}
+      <FlavorWheel
+        open={wheelOpen}
+        selected={flavors}
+        onClose={() => setWheelOpen(false)}
+        onSave={(next) => {
+          setFlavors(next)
+          setWheelOpen(false)
+        }}
+      />
     </div>
   )
 }

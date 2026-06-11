@@ -76,25 +76,6 @@ export function extractionTags(labData) {
   return tags
 }
 
-// Флейвор-теги на основе оценок + технологические теги экстракции (R2 Extract)
-export function flavorTags(scores, labData) {
-  const s = (k) => Number(scores?.[k]) || 0
-  const tags = []
-  if (s('acidity') >= 8) tags.push('цитрус', 'ягода')
-  else if (s('acidity') >= 6) tags.push('яблоко')
-  if (s('sweetness') >= 8) tags.push('карамель', 'мёд')
-  else if (s('sweetness') >= 6) tags.push('тростниковый сахар')
-  if (s('body') >= 8) tags.push('шоколад', 'орех')
-  if (s('aroma') >= 8) tags.push('цветочный')
-  if (s('aftertaste') >= 8) tags.push('какао')
-  if (s('cleanliness') >= 9) tags.push('чистая чашка')
-  if (s('flavor') >= 9) tags.push('комплексный')
-  // технологические теги из рефрактометра
-  tags.push(...extractionTags(labData))
-  // дедуп + ограничение
-  return [...new Set(tags)].slice(0, 8)
-}
-
 // Сверка фактической обжарки (Omix Plus) с целевым профилем Bellwether.
 // profile — resolved-объект профиля (или null), labData — измерения партии.
 export function validateBellwetherProfile(profile, labData) {
@@ -131,13 +112,15 @@ export function weightLoss(greenKg, roastedKg) {
   return ((g - r) / g) * 100
 }
 
+// Вкусовые дескрипторы выбираются вручную в колесе вкусов (batch.flavors);
+// в tags остались только технологические теги экстракции с рефрактометра.
 export function scoreSummary(scores, labData) {
   const total = totalScore(scores)
   return {
     total,
     grade: grade(total),
     description: profileDescription(scores),
-    tags: flavorTags(scores, labData),
+    tags: extractionTags(labData),
     alerts: analyzeLabData(labData),
   }
 }

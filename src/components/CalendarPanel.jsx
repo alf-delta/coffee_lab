@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronLeft, ChevronRight, Flame, CheckCircle2 } from 'lucide-react'
-import { readyDate } from '../lib/outgassing'
+import { ChevronLeft, ChevronRight, Flame, CheckCircle2, Coffee } from 'lucide-react'
+import { readyDate, serviceDate } from '../lib/outgassing'
 
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 const pad = (n) => String(n).padStart(2, '0')
@@ -10,6 +10,7 @@ const keyOfDate = (date) => keyOf(date.getFullYear(), date.getMonth(), date.getD
 
 const ROAST_COLOR = '#c87f2b' // обжарка
 const READY_COLOR = '#4f8a5b' // готово к анализу
+const SERVICE_COLOR = '#6f4e37' // допуск в работу в кофейне
 
 function Dot({ color }) {
   return (
@@ -24,7 +25,7 @@ export default function CalendarPanel({ batches, selected = null, onSelect, clas
   const today = new Date()
   const [view, setView] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
 
-  // События по дням: обжарка + дата готовности к анализу
+  // События по дням: обжарка + готовность к анализу + допуск в работу
   const eventsByDay = useMemo(() => {
     const map = {}
     const add = (k, type, batch) => {
@@ -33,6 +34,7 @@ export default function CalendarPanel({ batches, selected = null, onSelect, clas
     for (const b of batches) {
       if (b.roast_date) add(String(b.roast_date).slice(0, 10), 'roast', b)
       add(keyOfDate(readyDate(b.roast_date, b.outgassing_days)), 'ready', b)
+      add(keyOfDate(serviceDate(b)), 'service', b)
     }
     return map
   }, [batches])
@@ -98,6 +100,7 @@ export default function CalendarPanel({ batches, selected = null, onSelect, clas
           const evts = eventsByDay[c.key] || []
           const hasRoast = evts.some((e) => e.type === 'roast')
           const hasReady = evts.some((e) => e.type === 'ready')
+          const hasService = evts.some((e) => e.type === 'service')
           const isToday = c.key === todayKey
           const isSelected = c.key === selected
           return (
@@ -117,10 +120,11 @@ export default function CalendarPanel({ batches, selected = null, onSelect, clas
               }}
             >
               <span className="leading-none">{c.day}</span>
-              {(hasRoast || hasReady) && (
+              {(hasRoast || hasReady || hasService) && (
                 <span className="flex h-1.5 items-center gap-0.5">
                   {hasRoast && <Dot color={ROAST_COLOR} />}
                   {hasReady && <Dot color={READY_COLOR} />}
+                  {hasService && <Dot color={SERVICE_COLOR} />}
                 </span>
               )}
             </button>
@@ -139,6 +143,9 @@ export default function CalendarPanel({ batches, selected = null, onSelect, clas
           </span>
           <span className="inline-flex items-center gap-1.5">
             <Dot color={READY_COLOR} /> Готово к анализу
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Dot color={SERVICE_COLOR} /> Допуск в работу
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="size-2.5 rounded-md" style={{ boxShadow: 'inset 0 0 0 1.5px rgba(111,78,55,0.35)' }} />
@@ -163,12 +170,14 @@ export default function CalendarPanel({ batches, selected = null, onSelect, clas
               >
                 {e.type === 'roast' ? (
                   <Flame size={13} className="shrink-0" style={{ color: ROAST_COLOR }} />
-                ) : (
+                ) : e.type === 'ready' ? (
                   <CheckCircle2 size={13} className="shrink-0" style={{ color: READY_COLOR }} />
+                ) : (
+                  <Coffee size={13} className="shrink-0" style={{ color: SERVICE_COLOR }} />
                 )}
                 <span className="truncate text-espresso">{e.batch.name}</span>
                 <span className="ml-auto shrink-0 text-coffee-soft">
-                  {e.type === 'roast' ? 'обжарка' : 'готово'}
+                  {e.type === 'roast' ? 'обжарка' : e.type === 'ready' ? 'готово' : 'в работу'}
                 </span>
               </div>
             ))}

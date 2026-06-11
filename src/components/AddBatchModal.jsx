@@ -1,13 +1,16 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X } from 'lucide-react'
-import { Settings2 } from 'lucide-react'
+import { X, Settings2, Bean, FlaskRound } from 'lucide-react'
 import {
   ROAST_LEVEL_LABELS,
   PROCESSING_METHODS,
   STATUS,
+  GREEN_QC_METRICS,
+  OUTGASSING_ANALYSIS_DAYS,
+  SERVICE_RELEASE_DAYS,
   defaultScores,
   defaultLabData,
+  defaultGreenQC,
   roastLevelFromAgtron,
 } from '../data/constants'
 
@@ -16,50 +19,75 @@ const today = () => new Date().toISOString().slice(0, 10)
 const field =
   'w-full rounded-2xl border border-white/60 bg-white/55 px-4 py-2.5 text-sm text-espresso outline-none transition focus:border-gold/60 focus:bg-white/80 focus:ring-2 focus:ring-gold/25 placeholder:text-coffee-soft/50'
 
-export default function AddBatchModal({ open, profiles = [], onClose, onCreate, onManageProfiles }) {
+export default function AddBatchModal({
+  open,
+  profiles = [],
+  beans = [],
+  initialBeanId = '',
+  onClose,
+  onCreate,
+  onManageProfiles,
+  onManageBeans,
+}) {
   const [form, setForm] = useState(null)
 
-  // лениво инициализируем форму при открытии
+  // лениво инициализируем форму при открытии (с предвыбранным зерном из каталога)
   if (open && !form) {
+    const b = beans.find((x) => x.id === initialBeanId)
     setForm({
-      name: '',
-      origin: '',
+      name: b ? b.name : '',
+      origin: b ? b.origin || '' : '',
       roast_date: today(),
-      weight_g: 1000,
       roast_level: ROAST_LEVEL_LABELS[2],
-      process: PROCESSING_METHODS[0],
-      outgassing_days: 7,
+      process: b?.process || PROCESSING_METHODS[0],
+      outgassing_days: OUTGASSING_ANALYSIS_DAYS,
+      service_days: SERVICE_RELEASE_DAYS,
+      green_bean_id: b ? b.id : '',
       bellwether_profile_id: '',
-      bellwether_batch_number: '',
       green_weight_kg: 2.7,
       roasted_weight_kg: '',
+      ...defaultGreenQC(),
     })
   }
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
-  // Выбор профиля Bellwether автозаполняет название и уровень обжарки
+  // Выбор зерна из каталога автозаполняет название, происхождение и обработку
+  const selectBean = (id) => {
+    const b = beans.find((x) => x.id === id)
+    setForm((f) => ({
+      ...f,
+      green_bean_id: id,
+      name: b && !f.name.trim() ? b.name : f.name,
+      origin: b ? b.origin || f.origin : f.origin,
+      process: b && b.process ? b.process : f.process,
+    }))
+  }
+
+  // Выбор профиля Bellwether автозаполняет уровень обжарки по целевому Agtron
+  // (профиль не привязан к сорту — название партии приходит из зерна)
   const selectProfile = (id) => {
     const p = profiles.find((x) => x.id === id)
     setForm((f) => ({
       ...f,
       bellwether_profile_id: id,
-      name: p && (!f.name || f.name === '') ? p.coffee_name : f.name,
       roast_level: p ? roastLevelFromAgtron(p.target_agtron_whole) || f.roast_level : f.roast_level,
     }))
   }
 
-  const valid =
-    form && form.name.trim() && form.bellwether_profile_id && String(form.bellwether_batch_number).trim()
+  const valid = form && form.name.trim() && form.bellwether_profile_id
 
   const submit = (e) => {
     e.preventDefault()
     if (!valid) return
+    const greenQC = Object.fromEntries(
+      GREEN_QC_METRICS.map((m) => [m.key, Number(form[m.key]) || null])
+    )
     onCreate({
       ...form,
-      weight_g: Number(form.weight_g) || 0,
+      ...greenQC,
       outgassing_days: Number(form.outgassing_days) || 0,
-      bellwether_batch_number: Number(form.bellwether_batch_number) || null,
+      service_days: Number(form.service_days) || SERVICE_RELEASE_DAYS,
       green_weight_kg: Number(form.green_weight_kg) || null,
       roasted_weight_kg: Number(form.roasted_weight_kg) || null,
       status: STATUS.OUTGASSING,
@@ -110,6 +138,72 @@ export default function AddBatchModal({ open, profiles = [], onClose, onCreate, 
             </div>
 
             <div className="space-y-4">
+              {/* ── Зерно из каталога ── */}
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-coffee-soft">
+                    <Bean size={13} className="text-amber" /> Зерно из каталога
+                  </label>
+                  {onManageBeans && (
+                    <button
+                      type="button"
+                      onClick={onManageBeans}
+                      className="inline-flex items-center gap-1 text-xs text-amber transition hover:underline"
+                    >
+                      <Settings2 size={12} /> каталог
+                    </button>
+                  )}
+                </div>
+                <select
+                  className={field}
+                  value={form.green_bean_id}
+                  onChange={(e) => selectBean(e.target.value)}
+                >
+                  <option value="">— не из каталога —</option>
+                  {beans.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                      {b.origin ? ` · ${b.origin}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* ── Входной QC зелёного (замеры на момент жарки) ── */}
+              <div className="rounded-2xl border border-coffee/12 bg-white/30 p-4">
+                <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-coffee-soft">
+                  <FlaskRound size={13} className="text-amber" /> Анализ зелёного · Omix Plus
+                </div>
+                <p className="mb-3 text-[11px] leading-snug text-coffee-soft/70">
+                  Замеры этой закладки перед жаркой — влажность и Aw зависят от возраста и хранения зерна.
+                </p>
+                <div className="grid grid-cols-3 items-end gap-3">
+                  {GREEN_QC_METRICS.map((m) => (
+                    <div key={m.key}>
+                      <label className="mb-1.5 block text-xs font-medium text-coffee-soft">
+                        {m.label}
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min={m.min}
+                          max={m.max}
+                          step={m.step}
+                          className={field}
+                          placeholder="—"
+                          value={form[m.key] ?? ''}
+                          onChange={(e) => set(m.key, e.target.value)}
+                        />
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-coffee-soft/60">
+                          {m.unit}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {/* ── Ростер Bellwether ── */}
               <div className="rounded-2xl border border-gold/25 bg-gold/5 p-4">
                 <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-amber">
@@ -139,26 +233,12 @@ export default function AddBatchModal({ open, profiles = [], onClose, onCreate, 
                       <option value="">— выберите профиль —</option>
                       {profiles.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.coffee_name}
-                          {p.profile_name ? ` · ${p.profile_name}` : ''}
+                          {p.profile_name}
                         </option>
                       ))}
                     </select>
                   </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <label className="mb-1.5 block text-xs font-medium text-coffee-soft">
-                        № батча <span className="text-amber">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        className={field}
-                        placeholder="1024"
-                        value={form.bellwether_batch_number}
-                        onChange={(e) => set('bellwether_batch_number', e.target.value)}
-                      />
-                    </div>
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="mb-1.5 block text-xs font-medium text-coffee-soft">
                         Зелёный, кг
@@ -214,30 +294,16 @@ export default function AddBatchModal({ open, profiles = [], onClose, onCreate, 
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-coffee-soft">
-                    Дата обжарки
-                  </label>
-                  <input
-                    type="date"
-                    className={field}
-                    value={form.roast_date}
-                    onChange={(e) => set('roast_date', e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-coffee-soft">
-                    Вес, г
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    className={field}
-                    value={form.weight_g}
-                    onChange={(e) => set('weight_g', e.target.value)}
-                  />
-                </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-coffee-soft">
+                  Дата обжарки
+                </label>
+                <input
+                  type="date"
+                  className={field}
+                  value={form.roast_date}
+                  onChange={(e) => set('roast_date', e.target.value)}
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -271,18 +337,37 @@ export default function AddBatchModal({ open, profiles = [], onClose, onCreate, 
                 </div>
               </div>
 
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-coffee-soft">
-                  Срок дегазации, дней
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  className={field}
-                  value={form.outgassing_days}
-                  onChange={(e) => set('outgassing_days', e.target.value)}
-                />
+              {/* два порога дегазации: до анализа и до допуска в работу */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-coffee-soft">
+                    Дегазация до анализа, дней
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    className={field}
+                    value={form.outgassing_days}
+                    onChange={(e) => set('outgassing_days', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-coffee-soft">
+                    Допуск в работу, дней
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    className={field}
+                    value={form.service_days}
+                    onChange={(e) => set('service_days', e.target.value)}
+                  />
+                </div>
               </div>
+              <p className="-mt-2 text-[11px] leading-snug text-coffee-soft/70">
+                Оба срока считаются от даты обжарки: через {form.outgassing_days || '—'} дн. партия
+                готова к анализу, через {form.service_days || '—'} дн. — допущена в работу в кофейне.
+              </p>
             </div>
 
             <div className="mt-7 flex gap-3">

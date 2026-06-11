@@ -1,19 +1,20 @@
+import { forwardRef } from 'react'
 import { motion } from 'framer-motion'
-import { Calendar, Trash2, AlertTriangle, Check } from 'lucide-react'
+import { Calendar, Trash2, AlertTriangle, Check, Coffee } from 'lucide-react'
 import { totalScore, grade as gradeOf } from '../lib/scoring'
-import { formatDate, daysRemaining } from '../lib/outgassing'
+import { formatDate, formatDateShort, daysRemaining, isInService, serviceDate, serviceDaysRemaining } from '../lib/outgassing'
 import { STATUS } from '../data/constants'
 
 // Круглый индикатор активности справа
 function Indicator({ batch }) {
   const base = 'grid size-14 shrink-0 place-items-center rounded-full'
 
-  // Готово к анализу — зелёная галочка
+  // Готово к анализу (3-дневный порог) — коричневая галочка
   if (batch._status === STATUS.READY) {
     return (
       <div
         className={base}
-        style={{ background: '#4f8a5b', boxShadow: '0 6px 16px -6px rgba(79,138,91,0.7)' }}
+        style={{ background: '#6f4e37', boxShadow: '0 6px 16px -6px rgba(111,78,55,0.7)' }}
         title="Готово к анализу"
       >
         <Check size={26} strokeWidth={3} color="#fff" />
@@ -39,31 +40,47 @@ function Indicator({ batch }) {
     )
   }
 
-  // Анализ / Завершено — готовый скор
+  // Анализ / Завершено — скор; при наступлении 10-дневного допуска
+  // поверх скора появляется зелёная галочка — до нажатия «Запущено в работу»
   const total = totalScore(batch.scores)
   const g = gradeOf(total)
+  const awaitingLaunch = isInService(batch) && !batch.in_service_at
   return (
-    <div
-      className={base}
-      style={{
-        background: `color-mix(in srgb, ${g.tint} 16%, white)`,
-        border: `1.5px solid color-mix(in srgb, ${g.tint} 40%, transparent)`,
-      }}
-      title={g.label}
-    >
-      <span
-        className="font-display text-2xl leading-none tabular-nums"
-        style={{ color: g.tint }}
+    <div className="relative shrink-0">
+      <div
+        className={base}
+        style={{
+          background: `color-mix(in srgb, ${g.tint} 16%, white)`,
+          border: `1.5px solid color-mix(in srgb, ${g.tint} 40%, transparent)`,
+        }}
+        title={awaitingLaunch ? `${g.label} · допущено в работу с ${formatDate(serviceDate(batch))}` : g.label}
       >
-        {total}
-      </span>
+        <span
+          className="font-display text-2xl leading-none tabular-nums"
+          style={{ color: g.tint }}
+        >
+          {total}
+        </span>
+      </div>
+      {awaitingLaunch && (
+        <span
+          className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full"
+          style={{ background: '#4f8a5b', boxShadow: '0 0 0 2px #fff' }}
+          title="Готово в работу — запустите в карточке"
+        >
+          <Check size={12} strokeWidth={3.5} color="#fff" />
+        </span>
+      )}
     </div>
   )
 }
 
-export default function BatchCard({ batch, onOpen, onDelete }) {
+// forwardRef обязателен: AnimatePresence mode="popLayout" вешает ref на карточку,
+// чтобы зафиксировать её позицию при exit-анимации
+const BatchCard = forwardRef(function BatchCard({ batch, onOpen, onDelete }, ref) {
   return (
     <motion.article
+      ref={ref}
       layout
       initial={{ opacity: 0, y: 14, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -78,13 +95,36 @@ export default function BatchCard({ batch, onOpen, onDelete }) {
         {batch.name}
       </h3>
 
+      {/* допуск в работу: «в работе» — только после ручного запуска в карточке */}
+      {batch.in_service_at ? (
+        <span
+          className="hidden shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium sm:inline-flex"
+          style={{ background: 'rgba(79,138,91,0.12)', color: '#4f8a5b' }}
+          title={`Запущено в работу ${formatDate(batch.in_service_at)}`}
+        >
+          <Coffee size={12} /> в работе
+        </span>
+      ) : !isInService(batch) ? (
+        <span
+          className="hidden shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium sm:inline-flex"
+          style={{ background: 'rgba(176,125,43,0.12)', color: '#b07d2b' }}
+          title={`Допуск в работу: ${formatDate(serviceDate(batch))}`}
+        >
+          <Coffee size={12} /> в работу {Math.max(0, serviceDaysRemaining(batch))} дн.
+        </span>
+      ) : null}
+
       {/* разделитель */}
       <span className="h-7 w-px shrink-0 bg-coffee/15" />
 
-      {/* дата обжарки */}
-      <span className="inline-flex shrink-0 items-center gap-1.5 text-sm text-coffee-soft tabular-nums">
+      {/* дата обжарки: на мобильных — без года, имя сорта важнее */}
+      <span
+        className="inline-flex shrink-0 items-center gap-1.5 text-sm text-coffee-soft tabular-nums"
+        title={formatDate(batch.roast_date)}
+      >
         <Calendar size={14} />
-        {formatDate(batch.roast_date)}
+        <span className="sm:hidden">{formatDateShort(batch.roast_date)}</span>
+        <span className="hidden sm:inline">{formatDate(batch.roast_date)}</span>
       </span>
 
       {/* удаление (появляется на hover, без сдвига раскладки) */}
@@ -103,4 +143,6 @@ export default function BatchCard({ batch, onOpen, onDelete }) {
       <Indicator batch={batch} />
     </motion.article>
   )
-}
+})
+
+export default BatchCard

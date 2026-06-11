@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Calendar, Hourglass } from 'lucide-react'
+import { X, Calendar, Hourglass, Coffee, Aperture } from 'lucide-react'
 import RadarChart from './RadarChart'
 import ScoreBadge from './ScoreBadge'
 import SliderRow from './SliderRow'
@@ -8,14 +8,17 @@ import OutgassingProgress from './OutgassingProgress'
 import AnalysisWizard from './AnalysisWizard'
 import AiComment from './AiComment'
 import LabReadings from './LabReadings'
+import FlavorWheel, { FlavorChips } from './FlavorWheel'
 import { PARAMETERS, defaultLabData, STATUS } from '../data/constants'
 import { scoreSummary } from '../lib/scoring'
-import { formatDate, readyDate, daysRemaining } from '../lib/outgassing'
+import { formatDate, readyDate, daysRemaining, serviceDate, isInService } from '../lib/outgassing'
 
-export default function BatchDetail({ batch, profiles = [], onClose, onUpdate }) {
+export default function BatchDetail({ batch, profiles = [], beans = [], onClose, onUpdate }) {
   const [scores, setScores] = useState(batch?.scores || {})
   const [notes, setNotes] = useState(batch?.notes || '')
   const [labData, setLabData] = useState(batch?.lab_data || defaultLabData())
+  const [flavors, setFlavors] = useState(batch?.flavors || [])
+  const [wheelOpen, setWheelOpen] = useState(false)
 
   // пересинхронизация при смене партии
   useEffect(() => {
@@ -23,11 +26,14 @@ export default function BatchDetail({ batch, profiles = [], onClose, onUpdate })
     setScores(batch.scores || {})
     setNotes(batch.notes || '')
     setLabData(batch.lab_data || defaultLabData())
+    setFlavors(batch.flavors || [])
+    setWheelOpen(false)
   }, [batch?.id]) // eslint-disable-line
 
   if (!batch) return null
 
   const profile = profiles.find((p) => p.id === batch.bellwether_profile_id) || null
+  const bean = beans.find((b) => b.id === batch.green_bean_id) || null
   const summary = scoreSummary(scores, labData)
 
   const setScore = (key, value) => {
@@ -41,15 +47,23 @@ export default function BatchDetail({ batch, profiles = [], onClose, onUpdate })
     onUpdate(batch.id, { notes: v })
   }
 
+  const saveFlavors = (next) => {
+    setFlavors(next)
+    setWheelOpen(false)
+    onUpdate(batch.id, { flavors: next })
+  }
+
   // Запись анализа из мастера (статус READY → DONE)
-  const recordAnalysis = ({ scores: sc, lab_data, notes: nt }) => {
+  const recordAnalysis = ({ scores: sc, lab_data, notes: nt, flavors: fl = [] }) => {
     setScores(sc)
     setLabData(lab_data)
     setNotes(nt)
+    setFlavors(fl)
     onUpdate(batch.id, {
       scores: sc,
       lab_data,
       notes: nt,
+      flavors: fl,
       status: STATUS.DONE,
       analyzed_at: new Date().toISOString(),
     })
@@ -98,13 +112,33 @@ export default function BatchDetail({ batch, profiles = [], onClose, onUpdate })
                   )}
                 </div>
               </div>
-              <button
-                onClick={onClose}
-                aria-label="Закрыть"
-                className="grid size-11 shrink-0 place-items-center rounded-full bg-white/10 text-cream transition hover:bg-white/20"
-              >
-                <X size={20} />
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                {/* запуск в работу: доступен после анализа и 10-дневного допуска */}
+                {!isOutgassing && isInService(batch) && !batch.in_service_at && (
+                  <button
+                    onClick={() => onUpdate(batch.id, { in_service_at: new Date().toISOString() })}
+                    className="btn-gold inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-semibold transition hover:brightness-105"
+                  >
+                    <Coffee size={16} /> Запущено в работу
+                  </button>
+                )}
+                {/* на мобильных не показываем — дата есть в островке «В работе с» */}
+                {batch.in_service_at && (
+                  <span
+                    className="hidden items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-medium sm:inline-flex"
+                    style={{ background: 'rgba(79,138,91,0.18)', color: '#9fd3ab' }}
+                  >
+                    <Coffee size={15} /> В работе с {formatDate(batch.in_service_at)}
+                  </span>
+                )}
+                <button
+                  onClick={onClose}
+                  aria-label="Закрыть"
+                  className="grid size-11 shrink-0 place-items-center rounded-full bg-white/10 text-cream transition hover:bg-white/20"
+                >
+                  <X size={20} />
+                </button>
+              </div>
             </div>
 
             {/* ── Островки тех-данных + важные даты ── */}
@@ -112,21 +146,30 @@ export default function BatchDetail({ batch, profiles = [], onClose, onUpdate })
               className="grid shrink-0 gap-2"
               style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(118px, 1fr))' }}
             >
+              {bean && <Island label="Зерно" value={bean.name} />}
               <Island label="Происхождение" value={batch.origin || '—'} />
+              {bean?.variety && <Island label="Сорт" value={bean.variety} />}
               <Island label="Обжарка" value={batch.roast_level} />
               <Island label="Обработка" value={batch.process} />
-              <Island label="Вес" value={`${batch.weight_g} г`} />
+              {bean?.altitude && <Island label="Высота" value={bean.altitude} />}
+              {bean?.supplier && <Island label="Поставщик" value={bean.supplier} />}
+              {!!batch.weight_g && <Island label="Вес" value={`${batch.weight_g} г`} />}
               {batch.green_weight_kg != null && (
                 <Island label="Зелёный" value={`${batch.green_weight_kg} кг`} />
               )}
               {batch.roasted_weight_kg != null && (
                 <Island label="Обжаренный" value={`${batch.roasted_weight_kg} кг`} />
               )}
-              {profile && <Island label="Профиль" value={profile.profile_name || profile.coffee_name} />}
+              {profile && <Island label="Профиль" value={profile.profile_name} />}
               <Island label="Обжарка от" value={formatDate(batch.roast_date)} accent />
               <Island
                 label="Готово к анализу"
                 value={formatDate(readyDate(batch.roast_date, batch.outgassing_days))}
+                accent
+              />
+              <Island
+                label={batch.in_service_at ? 'В работе с' : 'Допуск в работу'}
+                value={formatDate(batch.in_service_at || serviceDate(batch))}
                 accent
               />
               {batch.analyzed_at && (
@@ -153,21 +196,31 @@ export default function BatchDetail({ batch, profiles = [], onClose, onUpdate })
                   <AiComment batch={batch} profile={profile} />
                 </div>
 
-                {/* показатели анализаторов — компактно, read-only */}
-                <LabReadings lab={labData} />
+                {/* показатели анализаторов + входные замеры зелёного — read-only */}
+                <LabReadings lab={labData} green={batch} />
               </div>
 
               {/* ПРАВАЯ ЗОНА — вкусовой профиль */}
               <div className="flex min-h-0 flex-col gap-3 lg:h-full lg:overflow-y-auto lg:pr-1">
                 {/* радар + скор/грейд (объединённый верхний блок) */}
-                <section className="glass-light grid shrink-0 items-center gap-3 rounded-[1.5rem] p-4 sm:grid-cols-2">
+                <section className="glass-light relative grid shrink-0 items-center gap-3 rounded-[1.5rem] p-4 sm:grid-cols-2">
+                  {/* кнопка колеса вкусов — в углу, рядом со скором */}
+                  <button
+                    type="button"
+                    onClick={() => setWheelOpen(true)}
+                    title="Колесо вкусов SCA"
+                    className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-gold/15 px-3 py-1.5 text-xs font-semibold text-amber transition hover:bg-gold/25"
+                  >
+                    <Aperture size={14} /> Колесо вкусов
+                    {flavors.length > 0 && <span className="tabular-nums">· {flavors.length}</span>}
+                  </button>
                   <div>
                     <div className="mb-1 font-display text-base text-espresso">Профиль чашки</div>
                     <div className="mx-auto w-full max-w-[230px]">
                       <RadarChart scores={scores} />
                     </div>
                   </div>
-                  <div className="flex flex-col items-center gap-2.5">
+                  <div className="flex flex-col items-center gap-2.5 pt-4">
                     <ScoreBadge total={summary.total} size={120} />
                     <div
                       className="rounded-full px-4 py-1 text-sm font-semibold"
@@ -193,6 +246,7 @@ export default function BatchDetail({ batch, profiles = [], onClose, onUpdate })
                         ))}
                       </div>
                     )}
+                    <FlavorChips flavors={flavors} />
                   </div>
                 </section>
 
@@ -201,7 +255,7 @@ export default function BatchDetail({ batch, profiles = [], onClose, onUpdate })
                   <div className="mb-3 font-display text-base text-espresso">
                     Органолептическая оценка
                   </div>
-                  <div className="grid gap-x-8 gap-y-2.5 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-x-8 gap-y-2.5 sm:grid-cols-2">
                     {PARAMETERS.map((p) => (
                       <SliderRow
                         key={p.key}
@@ -229,6 +283,14 @@ export default function BatchDetail({ batch, profiles = [], onClose, onUpdate })
             )}
               </>
             )}
+
+            {/* интерактивное колесо вкусов SCA */}
+            <FlavorWheel
+              open={wheelOpen}
+              selected={flavors}
+              onClose={() => setWheelOpen(false)}
+              onSave={saveFlavors}
+            />
           </motion.div>
         </motion.div>
       )}
@@ -263,13 +325,24 @@ function OutgassingCountdown({ batch }) {
         <OutgassingProgress batch={batch} />
       </div>
 
-      <div className="mt-6 rounded-2xl bg-coffee/8 px-4 py-3">
-        <div className="text-[11px] uppercase tracking-wide text-coffee-soft/70">
-          Можно приступить к анализу
+      <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="rounded-2xl bg-coffee/8 px-4 py-3">
+          <div className="text-[11px] uppercase tracking-wide text-coffee-soft/70">
+            Можно приступить к анализу
+          </div>
+          <div className="mt-1 flex items-center justify-center gap-2 font-display text-xl text-espresso">
+            <Calendar size={17} className="text-amber" />
+            {formatDate(ready)}
+          </div>
         </div>
-        <div className="mt-1 flex items-center justify-center gap-2 font-display text-xl text-espresso">
-          <Calendar size={17} className="text-amber" />
-          {formatDate(ready)}
+        <div className="rounded-2xl bg-coffee/8 px-4 py-3">
+          <div className="text-[11px] uppercase tracking-wide text-coffee-soft/70">
+            Допуск в работу в кофейне
+          </div>
+          <div className="mt-1 flex items-center justify-center gap-2 font-display text-xl text-espresso">
+            <Coffee size={17} className="text-amber" />
+            {formatDate(serviceDate(batch))}
+          </div>
         </div>
       </div>
 
@@ -316,17 +389,21 @@ function Marquee({ text, className = '' }) {
   }, [text])
 
   const animate = over > 1 && !reduce
-  const dur = Math.max(3, over / 35)
+  // цикл: пауза в начале → прокрутка до конца → пауза → мгновенный возврат в начало
+  const scroll = Math.max(3, over / 35)
+  const pause = 1.2
+  const dur = scroll + pause * 2
+  const times = [0, pause / dur, (pause + scroll) / dur, 1]
 
   return (
     <div ref={wrapRef} className={`overflow-hidden ${className}`} title={text}>
       <motion.span
         ref={textRef}
         className="inline-block whitespace-nowrap"
-        animate={animate ? { x: [0, -over] } : { x: 0 }}
+        animate={animate ? { x: [0, 0, -over, -over] } : { x: 0 }}
         transition={
           animate
-            ? { duration: dur, ease: 'linear', repeat: Infinity, repeatType: 'reverse', repeatDelay: 0.9 }
+            ? { duration: dur, times, ease: 'linear', repeat: Infinity, repeatType: 'loop' }
             : { duration: 0 }
         }
       >

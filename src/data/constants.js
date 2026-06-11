@@ -68,8 +68,11 @@ export const ROAST_LEVELS = {
   DARK: { label: 'Dark', min_agtron: 45 },
 }
 
-// Плоский список ярлыков (для селектов и индексного доступа)
-export const ROAST_LEVEL_LABELS = Object.values(ROAST_LEVELS).map((r) => r.label)
+// Плоский список ярлыков (для селектов и индексного доступа).
+// 'Espresso' — стилевой уровень вне шкалы Agtron: выбирается вручную,
+// в roastLevelFromAgtron не участвует. Добавлять новые уровни только в конец —
+// по индексам списка живут дефолты форм и сид.
+export const ROAST_LEVEL_LABELS = [...Object.values(ROAST_LEVELS).map((r) => r.label), 'Espresso']
 
 // Подбор уровня обжарки по измеренному Agtron (Omix Plus → авто-валидация)
 export function roastLevelFromAgtron(agtron) {
@@ -79,6 +82,13 @@ export function roastLevelFromAgtron(agtron) {
   for (const lvl of ordered) if (v >= lvl.min_agtron) return lvl.label
   return ROAST_LEVELS.DARK.label
 }
+
+// ── Пороги дегазации (дней от даты обжарки) ───────────────────
+// Два независимых порога, оба настраиваются на партии:
+// через ANALYSIS дней партия готова к лабораторному анализу,
+// через SERVICE — допущена в работу в кофейне (после анализа отлёживается).
+export const OUTGASSING_ANALYSIS_DAYS = 3
+export const SERVICE_RELEASE_DAYS = 10
 
 // ── Способы обработки ─────────────────────────────────────────
 export const PROCESSING_METHODS = [
@@ -110,57 +120,200 @@ export const defaultLabData = () =>
   Object.fromEntries(LAB_METRICS.map((m) => [m.key, '']))
 
 // ── Профили ростера Bellwether ────────────────────────────────
-// Стартовый каталог целевых профилей обжарки (сид для хранилища).
-// Дальше профили редактируются в приложении и хранятся в Supabase/localStorage.
+// Профиль описывает поведение ростера и НЕ привязан к сорту кофе —
+// применяется к любому зерну. Кривая (roast_log) импортируется из
+// CSV-лога Bellwether в ProfilesModal (парсер — src/lib/roastLog.js).
 export const DEFAULT_BELLWETHER_PROFILES = [
   {
     id: 'ethiopia_light_conv',
-    coffee_name: 'Ethiopia Yirgacheffe Kochere',
     profile_name: 'Light — Expressive Citrus (v2)',
     target_agtron_whole: 85,
     target_agtron_ground: 98,
     expected_moisture_loss: 12.5,
+    roast_log: null,
   },
   {
     id: 'colombia_med_sweet',
-    coffee_name: 'Colombia Huila Supremo',
     profile_name: 'Medium — Rich & Caramel',
     target_agtron_whole: 68,
     target_agtron_ground: 78,
     expected_moisture_loss: 13.2,
+    roast_log: null,
   },
   {
     id: 'kenya_aa_floral',
-    coffee_name: 'Kenya Nyeri AA',
     profile_name: 'Light-Medium — Blackcurrant',
     target_agtron_whole: 78,
     target_agtron_ground: 90,
     expected_moisture_loss: 13.8,
+    roast_log: null,
   },
   {
     id: 'brazil_dark_nutty',
-    coffee_name: 'Brazil Cerrado',
     profile_name: 'Medium-Dark — Nutty Chocolate',
     target_agtron_whole: 55,
     target_agtron_ground: 64,
     expected_moisture_loss: 14.5,
+    roast_log: null,
   },
 ]
 
 // Заготовка нового профиля для формы создания
 export const defaultProfile = () => ({
-  coffee_name: '',
   profile_name: '',
   target_agtron_whole: 70,
   target_agtron_ground: 80,
   expected_moisture_loss: 13,
+  roast_log: null,
+  log_date: null,
 })
 
 // Декларативное описание дополнительных полей формы новой партии
 // (привязка к физическому процессу в ростере). Справочник для UI/валидации.
 export const NEW_BATCH_FORM_FIELDS = [
   { key: 'bellwether_profile_id', label: 'Профиль Bellwether', type: 'select', required: true },
-  { key: 'bellwether_batch_number', label: 'Номер батча из ростера', type: 'number', required: true },
   { key: 'green_weight_kg', label: 'Вес зелёного кофе (кг)', type: 'number', defaultValue: 2.7 },
   { key: 'roasted_weight_kg', label: 'Вес обжаренного кофе (кг)', type: 'number', required: false },
 ]
+
+// ── Входной QC зелёного зерна ─────────────────────────────────
+// Замеры Omix Plus по зелёному НА МОМЕНТ ЖАРКИ — живут на партии,
+// не в каталоге: влажность/Aw меняются с возрастом и хранением зерна.
+export const GREEN_QC_METRICS = [
+  { key: 'green_moisture', label: 'Влажность', unit: '%', min: 0, max: 20, step: 0.1 },
+  { key: 'green_water_activity', label: 'Активность воды', unit: 'Aw', min: 0, max: 1, step: 0.01 },
+  { key: 'green_density', label: 'Плотность', unit: 'г/л', min: 0, max: 1000, step: 1 },
+]
+
+export const defaultGreenQC = () =>
+  Object.fromEntries(GREEN_QC_METRICS.map((m) => [m.key, '']))
+
+// ── Каталог зерна (паспорта линейки) ──────────────────────────
+// Стартовый лайнап Monoblend на открытие; дальше редактируется в приложении.
+export const DEFAULT_GREEN_BEANS = [
+  {
+    id: 'caicedo_washed',
+    name: 'Caicedo Washed',
+    supplier: 'Those Coffee People',
+    origin: 'Колумбия, Кайседо (Антиокия)',
+    farm: 'Кооператив Aprokafes · Элкин Диоса',
+    variety: 'Castillo, Colombia, Caturra',
+    process: 'Washed',
+    process_detail: '',
+    altitude: '1950–2100 MASL',
+    harvest: '',
+    sca: '84+',
+    flavor_notes: 'молочный шоколад, мёд, жёлтые фрукты, ваниль',
+    role: 'Daily driver · база эспрессо',
+    story:
+      'Также называется «Resiliencia» («Стойкость»). Кооператив Aprokafes объединяет мелких фермеров Кайседо под общим покупочным центром с контролем качества. Кайседо — отдалённый горный городок с историей кофеводства с 1872 года. Baseline VIP-дегустации: задаёт точку отсчёта линейки.',
+    hero: false,
+  },
+  {
+    id: 'black_honey',
+    name: 'Black Honey',
+    supplier: 'Those Coffee People',
+    origin: 'Колумбия, Фредония (Антиокия)',
+    farm: 'Семья Барриентос',
+    variety: '',
+    process: 'Honey',
+    process_detail: 'Black Honey · 80–100% слизи при сушке',
+    altitude: '',
+    harvest: '',
+    sca: '86+',
+    flavor_notes: 'коричневый сахар, тёмный шоколад, персик, чёрный чай',
+    role: 'Сладкий якорь меню · к выпечке',
+    story:
+      'Семья Барриентос связана с наследием федерации колумбийских кофеводов. Black Honey — максимальная степень оставленной слизи (80–100%): больше тела и ферментированной сладости, чем у Yellow/Red Honey, самый «natural-like» из Honey-процессов. Меню-сюрприз зала.',
+    hero: false,
+  },
+  {
+    id: 'caturra_chiroso',
+    name: 'Caturra Chiroso',
+    supplier: 'Those Coffee People',
+    origin: 'Колумбия',
+    farm: '',
+    variety: 'Caturra Chiroso',
+    process: 'Washed',
+    process_detail: '',
+    altitude: '',
+    harvest: '',
+    sca: '87',
+    flavor_notes: 'флоральный, мандарин, лимонная трава, мёд',
+    role: 'Bright morning pour-over',
+    story:
+      'Chiroso — колумбийская мутация Caturra с удлинёнными зёрнами, долгое время считавшаяся разновидностью Geisha. Более высокий SCA, чем у Caicedo Washed, при заметно более сложном, прозрачном профиле. Редкий сорт, набирающий популярность у specialty-роастеров. Меню-сюрприз зала.',
+    hero: false,
+  },
+  {
+    id: 'wush_wush',
+    name: 'Wush Wush',
+    supplier: 'Those Coffee People',
+    origin: 'Колумбия (сорт эфиопского происхождения)',
+    farm: 'Las Nubes · Марко Эчеверри',
+    variety: 'Wush Wush (эфиопский heirloom)',
+    process: 'Natural',
+    process_detail: '150-часовая анаэробная ферментация',
+    altitude: '~1950 MASL',
+    harvest: '',
+    sca: '90',
+    flavor_notes: 'какао, смородина, тропические фрукты, ромашка',
+    role: 'Hero bean · паринг с чёрной икрой',
+    story:
+      'Главный продукт Monoblend и финал VIP-сессии: соло → с чёрной икрой. 150-часовая анаэробная ферментация даёт глубокую funky-сладость с ягодно-тропическим DNA; иодные ноты икры усиливают её через умами-синергию, соль подавляет горечь, жир удлиняет послевкусие. Wush Wush — редкий низкоурожайный сорт родом из Эфиопии, конкурент Panama Geisha; Марко Эчеверри одним из первых внедрил его в Колумбии.',
+    hero: true,
+  },
+  {
+    id: 'maximinos_maceration',
+    name: "Maximino's Maceration",
+    supplier: 'Gold Mountain Coffee Growers',
+    origin: 'Никарагуа, Хинотега',
+    farm: 'Finca Santa Adela · Максимино Палациос и Марлен Эрнандес',
+    variety: 'Red Catuaí',
+    process: 'Carbonic Maceration',
+    process_detail: '118-часовая двойная анаэробная ферментация',
+    altitude: '1100–1240 MASL',
+    harvest: '',
+    sca: '',
+    flavor_notes: 'красное яблоко, розовые флоральные ноты, мармелад, белый виноград',
+    role: 'Funky «wow» tasting',
+    story:
+      'Многократный лауреат Golden Bean Award. Карбоническая мацерация заимствована из виноделия: зёрна ферментируются в герметичной среде с CO₂. Gold Mountain — кооператив из 70+ фермеров Никарагуа; во время сбора на фермах дежурят «ripeness staff» с рефрактометрами. Самый «дикий» профиль линейки. Меню-сюрприз зала.',
+    hero: false,
+  },
+  {
+    id: 'decaf_elixir',
+    name: 'Decaf Elixir',
+    supplier: 'Gold Mountain × Swiss Water',
+    origin: 'Никарагуа, Хинотега',
+    farm: '70+ малых фермеров Gold Mountain (вкл. Finca Idealista)',
+    variety: 'Bourbon, Catuaí, Caturra, Pacamara, Maracaturra…',
+    process: 'Carbonic Maceration',
+    process_detail: 'CM Natural → Swiss Water Decaf (без растворителей)',
+    altitude: '1300–1600 MASL',
+    harvest: '',
+    sca: '',
+    flavor_notes: 'красное яблоко, тростниковый сахар, золотой киви, малина, слива',
+    role: 'Decaf без компромиссов',
+    story:
+      'Swiss Water — 100% химически чистая декофеинизация: первый батч насыщает воду ароматами и вымывает кофеин, последующие теряют только кофеин — ароматический профиль сохраняется полностью. Omni roast: подходит и для фильтра, и для эспрессо. Фактор удивления для гостей, ожидающих плоский decaf. Меню-сюрприз зала.',
+    hero: false,
+  },
+]
+
+export const defaultBean = () => ({
+  name: '',
+  supplier: '',
+  origin: '',
+  farm: '',
+  variety: '',
+  process: PROCESSING_METHODS[0],
+  process_detail: '',
+  altitude: '',
+  harvest: '',
+  sca: '',
+  flavor_notes: '',
+  role: '',
+  story: '',
+  hero: false,
+})

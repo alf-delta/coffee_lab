@@ -1,39 +1,45 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Plus, Coffee, Database, HardDrive, SlidersHorizontal, X } from 'lucide-react'
+import { Plus, Coffee, Database, HardDrive, SlidersHorizontal, X, Bean } from 'lucide-react'
 import StatsBar from './components/StatsBar'
 import CalendarPanel from './components/CalendarPanel'
 import BatchCard from './components/BatchCard'
 import AddBatchModal from './components/AddBatchModal'
 import BatchDetail from './components/BatchDetail'
 import ProfilesModal from './components/ProfilesModal'
+import BeansModal from './components/BeansModal'
 import {
   listBatches, createBatch, updateBatch, deleteBatch,
   listProfiles, createProfile, updateProfile, deleteProfile,
+  listBeans, createBean, updateBean, deleteBean,
   storageMode,
 } from './lib/storage'
-import { effectiveStatus, readyDate, formatDate } from './lib/outgassing'
+import { effectiveStatus, readyDate, serviceDate, formatDate } from './lib/outgassing'
 import { STATUS } from './data/constants'
 
 const pad = (n) => String(n).padStart(2, '0')
 const keyOfDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-// дни-события партии: обжарка + дата готовности к анализу
+// дни-события партии: обжарка + готовность к анализу + допуск в работу
 const batchEventDays = (b) => {
   const days = []
   if (b.roast_date) days.push(String(b.roast_date).slice(0, 10))
   days.push(keyOfDate(readyDate(b.roast_date, b.outgassing_days)))
+  days.push(keyOfDate(serviceDate(b)))
   return days
 }
 
 export default function App() {
   const [batches, setBatches] = useState([])
   const [profiles, setProfiles] = useState([])
+  const [beans, setBeans] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [selectedDay, setSelectedDay] = useState(null)
   const [adding, setAdding] = useState(false)
+  const [roastBeanId, setRoastBeanId] = useState('') // предвыбранное зерно для новой партии
   const [openId, setOpenId] = useState(null)
   const [profilesOpen, setProfilesOpen] = useState(false)
+  const [beansOpen, setBeansOpen] = useState(false)
 
   // Рубрикатор и календарь взаимоисключающие
   const selectStatus = (key) => {
@@ -46,10 +52,11 @@ export default function App() {
   }
 
   useEffect(() => {
-    Promise.all([listBatches(), listProfiles()])
-      .then(([b, p]) => {
+    Promise.all([listBatches(), listProfiles(), listBeans()])
+      .then(([b, p, g]) => {
         setBatches(b)
         setProfiles(p)
+        setBeans(g)
       })
       .catch((e) => console.error('Ошибка загрузки', e))
       .finally(() => setLoading(false))
@@ -71,6 +78,7 @@ export default function App() {
   // ── мутации с оптимистичным обновлением ───────────────────
   const handleCreate = async (data) => {
     setAdding(false)
+    setRoastBeanId('')
     const tmpId = 'tmp-' + Date.now()
     setBatches((prev) => [{ ...data, id: tmpId, _optimistic: true }, ...prev])
     try {
@@ -128,6 +136,32 @@ export default function App() {
     }
   }
 
+  // ── CRUD каталога зерна ────────────────────────────────────
+  const handleBeanCreate = async (data) => {
+    try {
+      const row = await createBean(data)
+      setBeans((prev) => [...prev, row])
+    } catch (e) {
+      console.error(e)
+    }
+  }
+  const handleBeanUpdate = async (id, patch) => {
+    setBeans((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)))
+    try {
+      await updateBean(id, patch)
+    } catch (e) {
+      console.error(e)
+    }
+  }
+  const handleBeanDelete = async (id) => {
+    setBeans((prev) => prev.filter((b) => b.id !== id))
+    try {
+      await deleteBean(id)
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
   return (
     <div className="mx-auto min-h-dvh max-w-6xl px-4 pb-20 pt-6 sm:px-6 sm:pt-10">
       {/* шапка */}
@@ -148,6 +182,14 @@ export default function App() {
             {storageMode === 'supabase' ? <Database size={13} /> : <HardDrive size={13} />}
             {storageMode === 'supabase' ? 'Supabase' : 'Локально'}
           </span>
+          <motion.button
+            whileTap={{ scale: 0.96 }}
+            onClick={() => setBeansOpen(true)}
+            className="inline-flex items-center gap-2 rounded-full border border-coffee/15 bg-white/50 px-4 py-3 text-sm font-medium text-coffee transition hover:bg-white/80"
+          >
+            <Bean size={17} />
+            <span className="hidden sm:inline">Зерно</span>
+          </motion.button>
           <motion.button
             whileTap={{ scale: 0.96 }}
             onClick={() => setProfilesOpen(true)}
@@ -202,7 +244,9 @@ export default function App() {
           ) : visible.length === 0 ? (
             <EmptyState filter={filter} selectedDay={selectedDay} onAdd={() => setAdding(true)} />
           ) : (
-            <div className="grid gap-3">
+            /* grid-cols-1 обязателен: auto-колонка растёт по max-content карточки
+               и на мобильных выталкивает индикатор за экран */
+            <div className="grid grid-cols-1 gap-3">
               <AnimatePresence mode="popLayout">
                 {visible.map((b) => (
                   <BatchCard
@@ -222,16 +266,26 @@ export default function App() {
       <AddBatchModal
         open={adding}
         profiles={profiles}
-        onClose={() => setAdding(false)}
+        beans={beans}
+        initialBeanId={roastBeanId}
+        onClose={() => {
+          setAdding(false)
+          setRoastBeanId('')
+        }}
         onCreate={handleCreate}
         onManageProfiles={() => {
           setAdding(false)
           setProfilesOpen(true)
         }}
+        onManageBeans={() => {
+          setAdding(false)
+          setBeansOpen(true)
+        }}
       />
       <BatchDetail
         batch={openBatch}
         profiles={profiles}
+        beans={beans}
         onClose={() => setOpenId(null)}
         onUpdate={handleUpdate}
       />
@@ -242,6 +296,20 @@ export default function App() {
         onCreate={handleProfileCreate}
         onUpdate={handleProfileUpdate}
         onDelete={handleProfileDelete}
+      />
+      <BeansModal
+        open={beansOpen}
+        beans={beans}
+        batches={enriched}
+        onClose={() => setBeansOpen(false)}
+        onCreate={handleBeanCreate}
+        onUpdate={handleBeanUpdate}
+        onDelete={handleBeanDelete}
+        onRoast={(beanId) => {
+          setBeansOpen(false)
+          setRoastBeanId(beanId)
+          setAdding(true)
+        }}
       />
     </div>
   )

@@ -1,4 +1,4 @@
-import { STATUS } from '../data/constants'
+import { STATUS, SERVICE_RELEASE_DAYS } from '../data/constants'
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -35,10 +35,32 @@ export function effectiveStatus(batch, now = Date.now()) {
     : STATUS.OUTGASSING
 }
 
+// ── Допуск в работу в кофейне ─────────────────────────────────
+// Второй порог дегазации (service_days, дефолт 10 дн): после анализа
+// зерно ещё отлёживается до запуска в работу. На статусную цепочку не влияет.
+const serviceDays = (batch) => Number(batch.service_days) || SERVICE_RELEASE_DAYS
+
+export function serviceDate(batch) {
+  return readyDate(batch.roast_date, serviceDays(batch))
+}
+
+export function serviceDaysRemaining(batch, now = Date.now()) {
+  return daysRemaining(batch.roast_date, serviceDays(batch), now)
+}
+
+export function isInService(batch, now = Date.now()) {
+  return now >= serviceDate(batch).getTime()
+}
+
 export function formatDate(d) {
   return new Date(d).toLocaleDateString('ru-RU', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
   })
+}
+
+// Короткий формат для тесных мест (карточка партии): «31 мая»
+export function formatDateShort(d) {
+  return new Date(d).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
 }
