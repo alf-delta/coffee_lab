@@ -1,4 +1,20 @@
-import { PARAM_KEYS } from '../data/constants'
+import { PARAM_KEYS, BELLWETHER_ZONES } from '../data/constants'
+
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1)
+
+// Классификация значения по зонам Bellwether (green/yellow/red).
+// z = { green: [min,max], yellow: [[lmin,lmax],[hmin,hmax]] }.
+export function classifyZone(value, z) {
+  if (value == null || !z) return null
+  const v = Number(value)
+  if (!Number.isFinite(v)) return null
+  const [gmin, gmax] = z.green
+  if (v >= gmin && v <= gmax) return { zone: 'green', status: 'success', side: 'in' }
+  const [yl, yh] = z.yellow
+  if (v >= yl[0] && v <= yl[1]) return { zone: 'yellow', status: 'warning', side: 'low' }
+  if (v >= yh[0] && v <= yh[1]) return { zone: 'yellow', status: 'warning', side: 'high' }
+  return v < gmin ? { zone: 'red', status: 'danger', side: 'low' } : { zone: 'red', status: 'danger', side: 'high' }
+}
 
 // Сумма 10 параметров (1–10) → итоговый балл 0–100
 export function totalScore(scores) {
@@ -94,14 +110,49 @@ export function validateBellwetherProfile(profile, labData) {
   }
 
   const actual = Number(raw)
-  const diff = actual - profile.target_agtron_whole
-  const base = { profile, target: profile.target_agtron_whole, actual, diff }
+  const target = profile.target_agtron_whole
+  const diff = target != null ? actual - target : null
+  const base = { profile, target, actual, diff }
 
+  // Зоны Bellwether по пресету профиля (точные пороги «на входе в анализ»)
+  const zones = BELLWETHER_ZONES[profile.zone_preset]
+  if (zones?.agtron) {
+    const c = classifyZone(actual, zones.agtron)
+    if (!c) return { ...base, status: 'unknown', message: 'Не удалось классифицировать Agtron' }
+    if (c.status === 'success')
+      return { ...base, status: 'success', zone: c.zone, message: 'Agtron в зелёной зоне профиля' }
+    // высокое Agtron = светлее (недожар), низкое = темнее (пережар)
+    const lighter = c.side === 'high'
+    const word = c.status === 'warning' ? 'жёлтая зона' : 'красная зона'
+    return {
+      ...base, status: c.status, zone: c.zone,
+      message: `${cap(word)}: ${lighter ? 'светлее' : 'темнее'} цели (${actual} vs ${target} Agtron)`,
+    }
+  }
+
+  // fallback ±3 (профиль без пресета зон)
+  if (diff == null) return { ...base, status: 'unknown', message: 'У профиля не задана цель Agtron' }
   if (Math.abs(diff) <= 3)
     return { ...base, status: 'success', message: 'Идеальное попадание в профиль Bellwether' }
   if (diff > 3)
     return { ...base, status: 'warning', message: `Недожар: кофе светлее целевого профиля на ${diff.toFixed(1)} Agtron` }
   return { ...base, status: 'danger', message: `Пережар: кофе темнее целевого профиля на ${Math.abs(diff).toFixed(1)} Agtron` }
+}
+
+// Сверка ужарки (%) с зонами профиля Bellwether (для VerdictBar/анализа).
+export function validateWeightLoss(profile, lossPct) {
+  if (lossPct == null) return { status: 'pending', message: 'Нет данных по ужарке', target: null, actual: null }
+  const zones = BELLWETHER_ZONES[profile?.zone_preset]
+  const target = zones?.loss?.target ?? (profile?.expected_moisture_loss ?? null)
+  const base = { target, actual: lossPct }
+  if (zones?.loss) {
+    const c = classifyZone(lossPct, zones.loss)
+    if (c.status === 'success') return { ...base, status: 'success', zone: c.zone, message: 'Ужарка в зелёной зоне профиля' }
+    const high = c.side === 'high'
+    const word = c.status === 'warning' ? 'жёлтая зона' : 'красная зона'
+    return { ...base, status: c.status, zone: c.zone, message: `${cap(word)} ужарки: ${high ? 'выше' : 'ниже'} цели (${lossPct.toFixed(1)}% vs ${target}%)` }
+  }
+  return { ...base, status: 'unknown', message: 'У профиля нет зон ужарки' }
 }
 
 // Фактическая потеря массы при обжарке, % (зелёный → обжаренный)

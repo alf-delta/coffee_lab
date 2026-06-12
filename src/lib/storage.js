@@ -9,9 +9,9 @@ import {
   DEFAULT_GREEN_BEANS,
 } from '../data/constants'
 
-const LS_KEY = 'monoblend.batches.v7'
+const LS_KEY = 'monoblend.batches.v8'
 const TABLE = 'batches'
-const PROFILES_LS_KEY = 'monoblend.profiles.v2'
+const PROFILES_LS_KEY = 'monoblend.profiles.v3'
 const PROFILES_TABLE = 'bellwether_profiles'
 const BEANS_LS_KEY = 'monoblend.beans.v2'
 const BEANS_TABLE = 'green_beans'
@@ -37,7 +37,7 @@ function seed() {
       service_days: 10,
       status: STATUS.DONE,
       green_bean_id: 'caicedo_washed',
-      bellwether_profile_id: 'colombia_med_sweet',
+      bellwether_profile_id: 'bw_espresso',
       bellwether_batch_number: 1042,
       green_weight_kg: 2.7,
       roasted_weight_kg: 2.36,
@@ -64,7 +64,7 @@ function seed() {
       service_days: 12,
       status: STATUS.OUTGASSING,
       green_bean_id: 'wush_wush',
-      bellwether_profile_id: 'ethiopia_light_conv',
+      bellwether_profile_id: 'bw_filter',
       bellwether_batch_number: 1043,
       green_weight_kg: 2.7,
       roasted_weight_kg: 2.34,

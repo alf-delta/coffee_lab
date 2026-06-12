@@ -123,37 +123,42 @@ export const defaultLabData = () =>
 // Профиль описывает поведение ростера и НЕ привязан к сорту кофе —
 // применяется к любому зерну. Кривая (roast_log) импортируется из
 // CSV-лога Bellwether в ProfilesModal (парсер — src/lib/roastLog.js).
+//
+// Пороги сверки «на входе в анализ» — зоны Bellwether Production
+// (green/yellow/red) по двум метрикам: Agtron (цельное) и ужарка (%).
+// Пресет (`zone_preset`) на профиле выбирает набор зон. Классификация —
+// classifyZone в scoring.js: green→success, yellow→warning, red→danger.
+export const BELLWETHER_ZONES = {
+  filter: {
+    label: 'Filter (light)',
+    agtron: { target: 71.0, green: [68.0, 74.0], yellow: [[65.0, 67.9], [74.1, 77.0]] },
+    loss: { target: 12.2, green: [11.5, 13.0], yellow: [[11.0, 11.4], [13.1, 13.5]] },
+  },
+  espresso: {
+    label: 'Espresso (Modern/Medium)',
+    agtron: { target: 58.3, green: [57.0, 62.0], yellow: [[54.0, 56.9], [62.1, 65.0]] },
+    loss: { target: 13.3, green: [12.5, 14.0], yellow: [[12.0, 12.4], [14.1, 14.5]] },
+  },
+}
+export const ZONE_PRESET_OPTIONS = Object.entries(BELLWETHER_ZONES).map(([id, z]) => ({ id, label: z.label }))
+
 export const DEFAULT_BELLWETHER_PROFILES = [
   {
-    id: 'ethiopia_light_conv',
-    profile_name: 'Light — Expressive Citrus (v2)',
-    target_agtron_whole: 85,
-    target_agtron_ground: 98,
-    expected_moisture_loss: 12.5,
+    id: 'bw_filter',
+    profile_name: 'Filter Coffee',
+    zone_preset: 'filter',
+    target_agtron_whole: 71,
+    target_agtron_ground: null,
+    expected_moisture_loss: 12.2,
     roast_log: null,
   },
   {
-    id: 'colombia_med_sweet',
-    profile_name: 'Medium — Rich & Caramel',
-    target_agtron_whole: 68,
-    target_agtron_ground: 78,
-    expected_moisture_loss: 13.2,
-    roast_log: null,
-  },
-  {
-    id: 'kenya_aa_floral',
-    profile_name: 'Light-Medium — Blackcurrant',
-    target_agtron_whole: 78,
-    target_agtron_ground: 90,
-    expected_moisture_loss: 13.8,
-    roast_log: null,
-  },
-  {
-    id: 'brazil_dark_nutty',
-    profile_name: 'Medium-Dark — Nutty Chocolate',
-    target_agtron_whole: 55,
-    target_agtron_ground: 64,
-    expected_moisture_loss: 14.5,
+    id: 'bw_espresso',
+    profile_name: 'Espresso (Modern/Medium)',
+    zone_preset: 'espresso',
+    target_agtron_whole: 58.3,
+    target_agtron_ground: null,
+    expected_moisture_loss: 13.3,
     roast_log: null,
   },
 ]
@@ -161,9 +166,10 @@ export const DEFAULT_BELLWETHER_PROFILES = [
 // Заготовка нового профиля для формы создания
 export const defaultProfile = () => ({
   profile_name: '',
-  target_agtron_whole: 70,
-  target_agtron_ground: 80,
-  expected_moisture_loss: 13,
+  zone_preset: 'filter',
+  target_agtron_whole: 71,
+  target_agtron_ground: null,
+  expected_moisture_loss: 12.2,
   roast_log: null,
   log_date: null,
 })

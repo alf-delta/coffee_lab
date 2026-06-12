@@ -74,6 +74,8 @@ create policy "authenticated access"
 create table if not exists public.bellwether_profiles (
   id                     text primary key,
   profile_name           text not null,
+  -- пресет зон сверки (green/yellow/red): 'filter' | 'espresso' | null
+  zone_preset            text,
   target_agtron_whole    numeric,
   target_agtron_ground   numeric,
   expected_moisture_loss numeric,
@@ -83,6 +85,7 @@ create table if not exists public.bellwether_profiles (
 );
 
 alter table public.bellwether_profiles enable row level security;
+alter table public.bellwether_profiles add column if not exists zone_preset text;
 
 drop policy if exists "anon full access" on public.bellwether_profiles;
 drop policy if exists "authenticated access" on public.bellwether_profiles;
@@ -95,12 +98,10 @@ create policy "authenticated access"
 
 -- Стартовый каталог (можно править/удалять прямо в приложении)
 insert into public.bellwether_profiles
-  (id, profile_name, target_agtron_whole, target_agtron_ground, expected_moisture_loss)
+  (id, profile_name, zone_preset, target_agtron_whole, expected_moisture_loss)
 values
-  ('ethiopia_light_conv', 'Light — Expressive Citrus (v2)', 85, 98, 12.5),
-  ('colombia_med_sweet',  'Medium — Rich & Caramel',        68, 78, 13.2),
-  ('kenya_aa_floral',     'Light-Medium — Blackcurrant',    78, 90, 13.8),
-  ('brazil_dark_nutty',   'Medium-Dark — Nutty Chocolate',  55, 64, 14.5)
+  ('bw_filter',   'Filter Coffee',            'filter',   71,   12.2),
+  ('bw_espresso', 'Espresso (Modern/Medium)', 'espresso', 58.3, 13.3)
 on conflict (id) do nothing;
 
 -- ── Каталог зерна (паспорта линейки Monoblend) ───────────────

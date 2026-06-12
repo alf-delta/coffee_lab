@@ -4,7 +4,7 @@ import {
   X, Plus, Pencil, Trash2, Target, ArrowLeft, Upload, FileSpreadsheet,
   Clock, Flame, CornerRightDown, LogOut,
 } from 'lucide-react'
-import { defaultProfile } from '../data/constants'
+import { defaultProfile, ZONE_PRESET_OPTIONS, BELLWETHER_ZONES } from '../data/constants'
 import { parseRoastLog, formatRoastTime } from '../lib/roastLog'
 import RoastCurve, { CurveLegend } from './RoastCurve'
 
@@ -67,6 +67,15 @@ export default function ProfilesModal({ open, profiles, onClose, onCreate, onUpd
     onClose()
   }
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+  // выбор пресета зон автозаполняет целевые Agtron/ужарку из спеки Bellwether
+  const setPreset = (id) => {
+    const z = BELLWETHER_ZONES[id]
+    setForm((f) => ({
+      ...f,
+      zone_preset: id,
+      ...(z ? { target_agtron_whole: z.agtron.target, expected_moisture_loss: z.loss.target } : {}),
+    }))
+  }
   const valid = form && form.profile_name?.trim()
 
   // загрузка CSV-лога: парсим и автозаполняем всё, что можно
@@ -96,6 +105,7 @@ export default function ProfilesModal({ open, profiles, onClose, onCreate, onUpd
     if (!valid) return
     const payload = {
       profile_name: form.profile_name.trim(),
+      zone_preset: form.zone_preset || null,
       target_agtron_whole: Number(form.target_agtron_whole) || null,
       target_agtron_ground: Number(form.target_agtron_ground) || null,
       expected_moisture_loss: Number(form.expected_moisture_loss) || null,
@@ -357,10 +367,31 @@ export default function ProfilesModal({ open, profiles, onClose, onCreate, onUpd
                       </label>
                       <input
                         className={field}
-                        placeholder="Light — Expressive Citrus (v2)"
+                        placeholder="Filter Coffee"
                         value={form.profile_name}
                         onChange={(e) => set('profile_name', e.target.value)}
                       />
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-coffee-soft">
+                        Зоны сверки (Bellwether)
+                      </label>
+                      <select
+                        className={field}
+                        value={form.zone_preset || ''}
+                        onChange={(e) => setPreset(e.target.value)}
+                      >
+                        <option value="">— без зон (грубый ±3 Agtron) —</option>
+                        {ZONE_PRESET_OPTIONS.map((o) => (
+                          <option key={o.id} value={o.id}>{o.label}</option>
+                        ))}
+                      </select>
+                      {form.zone_preset && BELLWETHER_ZONES[form.zone_preset] && (
+                        <p className="mt-1 text-[11px] leading-snug text-coffee-soft/70">
+                          Зелёная зона: Agtron {BELLWETHER_ZONES[form.zone_preset].agtron.green[0]}–{BELLWETHER_ZONES[form.zone_preset].agtron.green[1]} · ужарка {BELLWETHER_ZONES[form.zone_preset].loss.green[0]}–{BELLWETHER_ZONES[form.zone_preset].loss.green[1]}%. Целевые значения подставлены из пресета.
+                        </p>
+                      )}
                     </div>
                     <div className="grid grid-cols-3 gap-3">
                       {num.map((n) => (

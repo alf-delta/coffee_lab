@@ -10,7 +10,7 @@ import SliderRow from './SliderRow'
 import VoiceInput from './VoiceInput'
 import FlavorWheel, { FlavorChips } from './FlavorWheel'
 import { PARAMETERS, PARAM_KEYS, LAB_METRICS, defaultLabData } from '../data/constants'
-import { scoreSummary, validateBellwetherProfile, weightLoss } from '../lib/scoring'
+import { scoreSummary, validateBellwetherProfile, validateWeightLoss, weightLoss } from '../lib/scoring'
 
 const STEPS = [
   { key: 'omix', title: 'Физика зерна', sub: 'DiFluid Omix Plus', Icon: FlaskRound, source: 'Omix Plus' },
@@ -46,8 +46,8 @@ export default function AnalysisWizard({ batch, profile, onClose, onRecord }) {
   const allRated = ratedCount === PARAM_KEYS.length
   const summary = scoreSummary(scores, labData)
   const verdict = validateBellwetherProfile(profile, labData)
-  const vStyle = VERDICT[verdict.status] || VERDICT.unknown
   const loss = weightLoss(batch.green_weight_kg, batch.roasted_weight_kg)
+  const lossVerdict = validateWeightLoss(profile, loss)
 
   const applyParsed = (result) => {
     setScores(result.scores) // голос заполняет все 10
@@ -165,7 +165,7 @@ export default function AnalysisWizard({ batch, profile, onClose, onRecord }) {
                     </label>
                   ))}
                 </div>
-                <VerdictBar verdict={verdict} vStyle={vStyle} loss={loss} />
+                <VerdictBar verdict={verdict} lossVerdict={lossVerdict} loss={loss} />
               </>
             )}
 
@@ -293,7 +293,7 @@ export default function AnalysisWizard({ batch, profile, onClose, onRecord }) {
                 </div>
 
                 <div className="sm:col-span-2">
-                  <VerdictBar verdict={verdict} vStyle={vStyle} loss={loss} />
+                  <VerdictBar verdict={verdict} lossVerdict={lossVerdict} loss={loss} />
                   {summary.alerts.length > 0 && (
                     <div className="mt-3 space-y-2">
                       {summary.alerts.map((a, i) => (
@@ -358,33 +358,44 @@ export default function AnalysisWizard({ batch, profile, onClose, onRecord }) {
   )
 }
 
-function VerdictBar({ verdict, vStyle, loss }) {
+function MetricVerdict({ v, label, unit, actual }) {
+  const s = VERDICT[v.status] || VERDICT.unknown
   return (
     <div
-      className="mt-4 rounded-2xl px-4 py-3"
+      className="rounded-xl px-3 py-2.5"
       style={{
-        background: `color-mix(in srgb, ${vStyle.color} 12%, white)`,
-        border: `1px solid color-mix(in srgb, ${vStyle.color} 30%, transparent)`,
+        background: `color-mix(in srgb, ${s.color} 12%, white)`,
+        border: `1px solid color-mix(in srgb, ${s.color} 30%, transparent)`,
       }}
     >
-      <div className="flex items-start gap-2.5">
-        <vStyle.Icon size={18} className="mt-0.5 shrink-0" style={{ color: vStyle.color }} />
+      <div className="flex items-start gap-2">
+        <s.Icon size={16} className="mt-0.5 shrink-0" style={{ color: s.color }} />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 text-xs text-coffee-soft">
-            <Target size={12} />
-            {verdict.profile ? verdict.profile.profile_name : 'Профиль Bellwether'}
-          </div>
-          <div className="mt-0.5 text-sm font-medium" style={{ color: vStyle.color }}>
-            {verdict.message}
-          </div>
-          {verdict.target != null && (
-            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-coffee-soft tabular-nums">
-              <span>цель: {verdict.target} Agtron</span>
-              {verdict.actual != null && <span>факт: {verdict.actual} Agtron</span>}
-              {loss != null && <span>потеря массы: {loss.toFixed(1)}%</span>}
+          <div className="text-[10px] uppercase tracking-wide text-coffee-soft/70">{label}</div>
+          <div className="text-sm font-medium leading-snug" style={{ color: s.color }}>{v.message}</div>
+          {v.target != null && (
+            <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-coffee-soft tabular-nums">
+              <span>цель {v.target}{unit}</span>
+              {actual != null && <span>факт {actual}{unit}</span>}
             </div>
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function VerdictBar({ verdict, lossVerdict, loss }) {
+  return (
+    <div className="mt-4">
+      <div className="mb-1.5 flex items-center gap-1.5 text-xs text-coffee-soft">
+        <Target size={12} />
+        {verdict.profile ? verdict.profile.profile_name : 'Профиль Bellwether'}
+        <span className="text-coffee-soft/50">· зоны Bellwether</span>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <MetricVerdict v={verdict} label="Agtron · цельное" unit=" Agtron" actual={verdict.actual} />
+        <MetricVerdict v={lossVerdict} label="Ужарка" unit="%" actual={loss != null ? Number(loss.toFixed(1)) : null} />
       </div>
     </div>
   )

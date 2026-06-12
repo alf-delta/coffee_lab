@@ -1,5 +1,5 @@
 import { PARAMETERS } from '../data/constants'
-import { totalScore, grade as gradeOf, validateBellwetherProfile, weightLoss } from './scoring'
+import { totalScore, grade as gradeOf, validateBellwetherProfile, validateWeightLoss, weightLoss } from './scoring'
 import { rorSeries, formatRoastTime } from './roastLog'
 
 // ─────────────────────────────────────────────────────────────
@@ -180,25 +180,43 @@ export function analyzeFallback(batch, profile) {
     gaps.push('нет Agtron молотого — развитие сердцевины не оценено')
   }
 
-  // 4. Ужарка
+  // 4. Ужарка — зоны профиля Bellwether, иначе нормы по уровню обжарки
   const loss = weightLoss(batch?.green_weight_kg, batch?.roasted_weight_kg)
   if (loss != null) {
-    const range = LOSS_RANGE[level]
-    let tone = 'info', meaning = 'Потеря массы при обжарке.'
-    if (range) {
-      if (loss < range[0]) {
-        tone = 'warn'; meaning = `Ниже нормы «${level}» (${range[0]}–${range[1]}%): недобор развития / ранняя выгрузка.`
-        A({ key: 'loss-fix', target: 'roaster', lever: 'развитие / вес загрузки', direction: 'больше времени развития; сверить вес', rationale: 'низкая ужарка', priority: 'med' })
-      } else if (loss > range[1]) {
-        tone = 'warn'; meaning = `Выше нормы «${level}» (${range[0]}–${range[1]}%): затянутая/тёмная обжарка, риск потери сортовых нот.`
-        A({ key: 'loss-fix', target: 'roaster', lever: 'цель / фаза развития', direction: 'светлее цель или короче развитие', rationale: 'высокая ужарка', priority: 'med' })
-      } else {
-        tone = 'good'; meaning = `В норме для «${level}» (${range[0]}–${range[1]}%).`
+    const lv = validateWeightLoss(profile, loss)
+    const zoned = lv.status === 'success' || lv.status === 'warning' || lv.status === 'danger'
+    if (zoned) {
+      const tone = lv.status === 'success' ? 'good' : lv.status === 'warning' ? 'warn' : 'bad'
+      if (tone !== 'good') {
+        const high = /выше/.test(lv.message)
+        A({
+          key: 'loss-fix', target: 'roaster', lever: 'цель / фаза развития',
+          direction: high ? 'светлее цель или короче развитие' : 'больше развития; сверить вес загрузки',
+          rationale: 'ужарка вне зелёной зоны профиля', priority: tone === 'bad' ? 'high' : 'med',
+        })
       }
+      F({
+        key: 'loss', domain: 'chemistry', tone, title: 'Ужарка', value: loss.toFixed(1), unit: '%', source: 'chem:loss',
+        observation: `Потеря массы ${loss.toFixed(1)}% (цель ${lv.target}%).`, meaning: lv.message,
+      })
+    } else {
+      const range = LOSS_RANGE[level]
+      let tone = 'info', meaning = 'Потеря массы при обжарке.'
+      if (range) {
+        if (loss < range[0]) {
+          tone = 'warn'; meaning = `Ниже нормы «${level}» (${range[0]}–${range[1]}%): недобор развития / ранняя выгрузка.`
+          A({ key: 'loss-fix', target: 'roaster', lever: 'развитие / вес загрузки', direction: 'больше времени развития; сверить вес', rationale: 'низкая ужарка', priority: 'med' })
+        } else if (loss > range[1]) {
+          tone = 'warn'; meaning = `Выше нормы «${level}» (${range[0]}–${range[1]}%): затянутая/тёмная обжарка, риск потери сортовых нот.`
+          A({ key: 'loss-fix', target: 'roaster', lever: 'цель / фаза развития', direction: 'светлее цель или короче развитие', rationale: 'высокая ужарка', priority: 'med' })
+        } else {
+          tone = 'good'; meaning = `В норме для «${level}» (${range[0]}–${range[1]}%).`
+        }
+      }
+      const cmp = profile?.expected_moisture_loss != null ? ` Цель ≈ ${profile.expected_moisture_loss}%.` : ''
+      F({ key: 'loss', domain: 'chemistry', tone, title: 'Ужарка', value: loss.toFixed(1), unit: '%', source: 'chem:loss',
+        observation: `Потеря массы ${loss.toFixed(1)}%.${cmp}`, meaning })
     }
-    const cmp = profile?.expected_moisture_loss != null ? ` Цель ≈ ${profile.expected_moisture_loss}%.` : ''
-    F({ key: 'loss', domain: 'chemistry', tone, title: 'Ужарка', value: loss.toFixed(1), unit: '%', source: 'chem:loss',
-      observation: `Потеря массы ${loss.toFixed(1)}%.${cmp}`, meaning })
   } else {
     gaps.push('нет весов зелёное/обжаренное — ужарка не посчитана')
   }
