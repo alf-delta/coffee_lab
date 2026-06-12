@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Calendar, Hourglass, Coffee, Aperture, FileDown } from 'lucide-react'
+import { X, Calendar, Hourglass, Coffee, Aperture, FileDown, AlertTriangle } from 'lucide-react'
 import RadarChart from './RadarChart'
 import ScoreBadge from './ScoreBadge'
 import SliderRow from './SliderRow'
@@ -22,6 +22,7 @@ export default function BatchDetail({ batch, profiles = [], beans = [], onClose,
   const [flavors, setFlavors] = useState(batch?.flavors || [])
   const [wheelOpen, setWheelOpen] = useState(false)
   const [aiPending, setAiPending] = useState(false)
+  const [forced, setForced] = useState(false) // принудительный анализ при дегазации
 
   // пересинхронизация при смене партии
   useEffect(() => {
@@ -32,6 +33,7 @@ export default function BatchDetail({ batch, profiles = [], beans = [], onClose,
     setFlavors(batch.flavors || [])
     setWheelOpen(false)
     setAiPending(false)
+    setForced(false)
   }, [batch?.id]) // eslint-disable-line
 
   if (!batch) return null
@@ -112,7 +114,7 @@ export default function BatchDetail({ batch, profiles = [], beans = [], onClose,
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
             className="relative z-10 mx-auto flex h-full w-full max-w-[1600px] flex-col gap-3 overflow-y-auto lg:overflow-visible"
           >
-            {isReady ? (
+            {isReady || forced ? (
               <AnalysisWizard
                 batch={batch}
                 profile={profile}
@@ -213,9 +215,20 @@ export default function BatchDetail({ batch, profiles = [], beans = [], onClose,
             </div>
 
             {isOutgassing ? (
-              /* ── Партия ещё дегазирует: отсчёт до анализа ── */
-              <div className="flex min-h-0 flex-1 items-center justify-center py-4">
+              /* ── Партия ещё дегазирует: отсчёт до анализа + форс-анализ ── */
+              <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 py-4">
                 <OutgassingCountdown batch={batch} />
+                <div className="flex flex-col items-center gap-2">
+                  <button
+                    onClick={() => setForced(true)}
+                    className="inline-flex items-center gap-2 rounded-full border border-[#e89a92]/40 bg-[#e89a92]/15 px-5 py-2.5 text-sm font-semibold text-[#f0b3ab] transition hover:bg-[#e89a92]/25"
+                  >
+                    <AlertTriangle size={15} /> Всё равно провести анализ
+                  </button>
+                  <p className="max-w-xs text-center text-[11px] leading-snug text-latte/45">
+                    Дегазация не завершена — остаточный CO₂ может исказить экстракцию и дегустацию.
+                  </p>
+                </div>
               </div>
             ) : (
             <>
