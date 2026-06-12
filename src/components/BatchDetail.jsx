@@ -12,6 +12,7 @@ import FlavorWheel, { FlavorChips } from './FlavorWheel'
 import { PARAMETERS, defaultLabData, STATUS } from '../data/constants'
 import { scoreSummary } from '../lib/scoring'
 import { formatDate, readyDate, daysRemaining, serviceDate, isInService } from '../lib/outgassing'
+import { analyzeBatch, aiAnalystEnabled } from '../lib/aiClient'
 
 export default function BatchDetail({ batch, profiles = [], beans = [], onClose, onUpdate }) {
   const [scores, setScores] = useState(batch?.scores || {})
@@ -19,6 +20,7 @@ export default function BatchDetail({ batch, profiles = [], beans = [], onClose,
   const [labData, setLabData] = useState(batch?.lab_data || defaultLabData())
   const [flavors, setFlavors] = useState(batch?.flavors || [])
   const [wheelOpen, setWheelOpen] = useState(false)
+  const [aiPending, setAiPending] = useState(false)
 
   // пересинхронизация при смене партии
   useEffect(() => {
@@ -28,6 +30,7 @@ export default function BatchDetail({ batch, profiles = [], beans = [], onClose,
     setLabData(batch.lab_data || defaultLabData())
     setFlavors(batch.flavors || [])
     setWheelOpen(false)
+    setAiPending(false)
   }, [batch?.id]) // eslint-disable-line
 
   if (!batch) return null
@@ -53,7 +56,21 @@ export default function BatchDetail({ batch, profiles = [], beans = [], onClose,
     onUpdate(batch.id, { flavors: next })
   }
 
-  // Запись анализа из мастера (статус READY → DONE)
+  // Авто-анализ Claude (roast-analyst) по полностью собранной партии.
+  // Не блокирует UI: пока идёт — AiComment показывает «генерируется»; при
+  // ошибке/недоступности молча остаёмся на правилах knowledge.js (fallback).
+  const triggerAi = (mergedBatch) => {
+    if (!aiAnalystEnabled) return
+    setAiPending(true)
+    analyzeBatch(mergedBatch, profile)
+      .then((insights) => {
+        if (insights) onUpdate(batch.id, { ai_analysis: insights, ai_analyzed_at: new Date().toISOString() })
+      })
+      .catch(() => {})
+      .finally(() => setAiPending(false))
+  }
+
+  // Запись анализа из мастера (статус READY → DONE) + авто-разбор ИИ
   const recordAnalysis = ({ scores: sc, lab_data, notes: nt, flavors: fl = [] }) => {
     setScores(sc)
     setLabData(lab_data)
@@ -67,7 +84,11 @@ export default function BatchDetail({ batch, profiles = [], beans = [], onClose,
       status: STATUS.DONE,
       analyzed_at: new Date().toISOString(),
     })
+    triggerAi({ ...batch, scores: sc, lab_data, notes: nt, flavors: fl })
   }
+
+  // Ручной перезапуск разбора (кнопка в шапке AiComment) — по текущему состоянию
+  const reanalyze = () => triggerAi({ ...batch, scores, lab_data: labData, notes, flavors })
 
   const isReady = batch._status === STATUS.READY
   const isOutgassing = batch._status === STATUS.OUTGASSING
@@ -195,7 +216,12 @@ export default function BatchDetail({ batch, profiles = [], beans = [], onClose,
               <div className="flex min-h-0 flex-col gap-3 lg:h-full">
                 {/* ИИ-комментарий занимает всю свободную высоту, скролл внутри */}
                 <div className="flex min-h-0 flex-1 flex-col">
-                  <AiComment batch={batch} profile={profile} />
+                  <AiComment
+                    batch={batch}
+                    profile={profile}
+                    pending={aiPending}
+                    onReanalyze={aiAnalystEnabled ? reanalyze : null}
+                  />
                 </div>
 
                 {/* показатели анализаторов + входные замеры зелёного — read-only */}

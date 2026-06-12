@@ -52,6 +52,39 @@ supabase functions deploy parse-cupping --no-verify-jwt
 `parse-cupping`, которая зовёт Claude (`claude-opus-4-8`) и возвращает 10 оценок + резюме.
 Если функция недоступна — приложение молча использует локальный парсер.
 
+## Оркестратор анализа обжарки (`roast-analyst`)
+
+Анализ партии Claude'ом, заземлённый на корпус знаний обжарки (`roster_kno`:
+сенсорика / химия / физика, вендорено в `supabase/functions/roast-analyst/knowledge/`).
+Тот же секрет `ANTHROPIC_API_KEY`.
+
+```bash
+# одноразово: добавить колонки кэша анализа в таблицу batches
+#   (SQL Editor) → выполнить ALTER из supabase/schema.sql:
+#   alter table public.batches add column if not exists ai_analysis jsonb;
+#   alter table public.batches add column if not exists ai_analyzed_at timestamptz;
+supabase functions deploy roast-analyst --no-verify-jwt
+```
+
+Как устроено:
+- **Контракт `Q_REPORT`** (`src/lib/qreport.js`) — единый формат вывода для всех источников:
+  `{ verdict, findings, actions, data_gaps }` (решение → доказательства → действия → пробелы).
+  Панель Monoblend Q (`AiComment`) рендерит любой источник одинаково.
+- **Команды** — реестр `commands.ts` (что Claude умеет; у каждой своя `model` — тиринг
+  Haiku/Sonnet/Opus). `analyze_batch` (одиночный разбор → Q_REPORT), доменные
+  `analyze_curve/chemistry/sensory`, `synthesize_verdict`, `diagnose_defect`.
+  Запрос: `POST … { command, payload }`.
+- **Пайплайн** — реестр `pipelines.ts` + исполнитель в `index.ts`. `batch_full` гоняет
+  стадии (curve→chemistry→sensory→synthesize, разные модели) server-side и
+  ДЕТЕРМИНИРОВАННО собирает Q_REPORT (`assemble()` считает балл/грейд кодом).
+  Запрос: `POST … { pipeline, payload }` → `{ result, trace }` (трейс по стадиям + usage).
+- **Знания** — в system отдельными блоками с `cache_control` (кэш ~5 мин).
+- **Строгий JSON** — forced `tool_use` (схема = инструмент команды).
+- **Триггер** — авто при записи анализа; результат кэшируется на партии
+  (`batch.ai_analysis` + `ai_analyzed_at`), не пересчитывается на рендере. Кнопка ↻ — ручной перезапуск.
+- **Fallback** — при недоступности API дашборд использует детерминированный
+  `analyzeFallback()` из `src/lib/knowledge.js` (тот же контракт Q_REPORT, без сети).
+
 ## Как это работает
 
 - **Статусы**: `Outgassing → Готово к анализу → Анализ → Завершено`. Первые два
@@ -73,8 +106,16 @@ src/
     supabase.js          клиент
     speech.js            Web Speech API
     parseCupping.js      вызов edge-функции + локальный fallback-парсер
+    qreport.js           контракт Q_REPORT (verdict/findings/actions/gaps) + normalizeReport
+    knowledge.js         знаниевый слой: analyzeFallback → Q_REPORT (детерминир. fallback)
+    aiClient.js          клиент оркестратора (команда / пайплайн → POST)
   components/            UI (карточки, модалки, радар, ползунки, голос…)
 supabase/
-  schema.sql             таблица batches + RLS
-  functions/parse-cupping/index.ts   Edge Function (Claude API)
+  schema.sql             таблицы batches/profiles/beans + RLS
+  functions/parse-cupping/index.ts   Edge Function: речь → 10 оценок (Claude)
+  functions/roast-analyst/           Оркестратор анализа обжарки (Monoblend Q)
+    index.ts                         сервер: кэш знаний + forced tool_use + runPipeline
+    commands.ts                      реестр команд (модель на команду)
+    pipelines.ts                     реестр пайплайнов + assemble (балл/грейд кодом)
+    knowledge/*.md                   корпус roster_kno (сенсорика/химия/физика)
 ```

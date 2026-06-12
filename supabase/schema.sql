@@ -36,8 +36,16 @@ create table if not exists public.batches (
   analyzed_at     timestamptz,
   -- отметка ручного запуска партии в работу в кофейне (кнопка в карточке)
   in_service_at   timestamptz,
+  -- разбор Claude (roast-analyst): массив инсайтов в формате roastCommentary;
+  -- генерируется при записи анализа, кэшируется на партии (не зовётся на рендере)
+  ai_analysis     jsonb,
+  ai_analyzed_at  timestamptz,
   created_at      timestamptz not null default now()
 );
+
+-- Миграция существующих установок (create table выше не трогает старые таблицы):
+alter table public.batches add column if not exists ai_analysis    jsonb;
+alter table public.batches add column if not exists ai_analyzed_at timestamptz;
 
 create index if not exists batches_created_at_idx
   on public.batches (created_at desc);
