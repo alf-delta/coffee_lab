@@ -107,7 +107,7 @@ export const LAB_METRICS = [
   { key: 'roast_color_ground', label: 'Agtron (Молотое)', unit: 'Agtron', source: 'Omix Plus', min: 0, max: 130, step: 1 },
   { key: 'moisture', label: 'Влажность зерна', unit: '%', source: 'Omix Plus', min: 0, max: 15, step: 0.1 },
   { key: 'water_activity', label: 'Активность воды', unit: 'Aw', source: 'Omix Plus', min: 0, max: 1, step: 0.01 },
-  { key: 'true_density', label: 'Истинная плотность', unit: 'г/л', source: 'Omix Plus', min: 0, max: 900, step: 1 },
+  { key: 'true_density', label: 'Истинная плотность', unit: 'г/л', source: 'Omix Plus', min: 0, step: 1 },
   { key: 'brew_tds', label: 'TDS напитка', unit: '%', source: 'R2 Extract', min: 0, max: 5, step: 0.01 },
   { key: 'brew_ey', label: 'Extraction Yield', unit: '%', source: 'R2 Extract', min: 0, max: 30, step: 0.1 },
 ]
@@ -182,7 +182,7 @@ export const NEW_BATCH_FORM_FIELDS = [
 export const GREEN_QC_METRICS = [
   { key: 'green_moisture', label: 'Влажность', unit: '%', min: 0, max: 20, step: 0.1 },
   { key: 'green_water_activity', label: 'Активность воды', unit: 'Aw', min: 0, max: 1, step: 0.01 },
-  { key: 'green_density', label: 'Плотность', unit: 'г/л', min: 0, max: 1000, step: 1 },
+  { key: 'green_density', label: 'Плотность', unit: 'г/л', min: 0, step: 1 },
 ]
 
 export const defaultGreenQC = () =>

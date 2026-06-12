@@ -55,8 +55,8 @@ export default function AddBatchModal({
       green_bean_id: b ? b.id : '',
       green_lot_id: firstLot ? firstLot.id : '',
       bellwether_profile_id: '',
-      green_weight_kg: 2.7,
-      roasted_weight_kg: '',
+      green_weight_g: 2700,
+      roasted_weight_g: '',
       ...defaultGreenQC(),
       ...qcFromLot(firstLot),
     })
@@ -99,10 +99,11 @@ export default function AddBatchModal({
 
   const valid = form && form.name.trim() && form.bellwether_profile_id
 
-  // лоты выбранного сорта + контроль списания
+  // лоты выбранного сорта + контроль списания (масса партии — в граммах)
   const lotsForBean = form?.green_bean_id ? activeLots(form.green_bean_id, lots) : []
   const selLot = lots.find((l) => l.id === form?.green_lot_id) || null
-  const overdraw = selLot && Number(form?.green_weight_kg) > lotRemaining(selLot)
+  const greenKg = (Number(form?.green_weight_g) || 0) / 1000
+  const overdraw = selLot && greenKg > lotRemaining(selLot)
 
   const submit = (e) => {
     e.preventDefault()
@@ -110,13 +111,15 @@ export default function AddBatchModal({
     const greenQC = Object.fromEntries(
       GREEN_QC_METRICS.map((m) => [m.key, Number(form[m.key]) || null])
     )
+    // масса вводится в граммах, хранится в кг; g-поля в payload не отдаём
+    const { green_weight_g, roasted_weight_g, ...rest } = form
     onCreate({
-      ...form,
+      ...rest,
       ...greenQC,
       outgassing_days: Number(form.outgassing_days) || 0,
       service_days: Number(form.service_days) || SERVICE_RELEASE_DAYS,
-      green_weight_kg: Number(form.green_weight_kg) || null,
-      roasted_weight_kg: Number(form.roasted_weight_kg) || null,
+      green_weight_kg: (Number(green_weight_g) || 0) / 1000 || null,
+      roasted_weight_kg: (Number(roasted_weight_g) || 0) / 1000 || null,
       status: STATUS.OUTGASSING,
       scores: defaultScores(),
       lab_data: defaultLabData(),
@@ -215,9 +218,9 @@ export default function AddBatchModal({
                       {selLot && (
                         <p className={`mt-1.5 text-[11px] leading-snug ${overdraw ? 'text-red-600' : 'text-coffee-soft/70'}`}>
                           {overdraw ? (
-                            <><AlertTriangle size={11} className="-mt-0.5 mr-1 inline" />Списываем {form.green_weight_kg} кг — больше остатка лота ({lotRemaining(selLot).toFixed(1)} кг)</>
+                            <><AlertTriangle size={11} className="-mt-0.5 mr-1 inline" />Списываем {form.green_weight_g || 0} г — больше остатка лота ({lotRemaining(selLot).toFixed(1)} кг)</>
                           ) : (
-                            `Параметры зелёного подставлены из лота; при сохранении ${form.green_weight_kg || 0} кг спишутся со склада.`
+                            `Параметры зелёного подставлены из лота; при сохранении ${form.green_weight_g || 0} г спишутся со склада.`
                           )}
                         </p>
                       )}
@@ -302,29 +305,29 @@ export default function AddBatchModal({
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="mb-1.5 block text-xs font-medium text-coffee-soft">
-                        Зелёный, кг
+                        Зелёный, г
                       </label>
                       <input
                         type="number"
                         min="0"
-                        step="0.1"
+                        step="10"
                         className={field}
-                        value={form.green_weight_kg}
-                        onChange={(e) => set('green_weight_kg', e.target.value)}
+                        value={form.green_weight_g}
+                        onChange={(e) => set('green_weight_g', e.target.value)}
                       />
                     </div>
                     <div>
                       <label className="mb-1.5 block text-xs font-medium text-coffee-soft">
-                        Обжарен., кг
+                        Обжарен., г
                       </label>
                       <input
                         type="number"
                         min="0"
-                        step="0.1"
+                        step="10"
                         className={field}
                         placeholder="—"
-                        value={form.roasted_weight_kg}
-                        onChange={(e) => set('roasted_weight_kg', e.target.value)}
+                        value={form.roasted_weight_g}
+                        onChange={(e) => set('roasted_weight_g', e.target.value)}
                       />
                     </div>
                   </div>
