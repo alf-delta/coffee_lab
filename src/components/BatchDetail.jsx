@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useLayoutEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Calendar, Hourglass, Coffee, Aperture } from 'lucide-react'
+import { X, Calendar, Hourglass, Coffee, Aperture, FileDown } from 'lucide-react'
 import RadarChart from './RadarChart'
 import ScoreBadge from './ScoreBadge'
 import SliderRow from './SliderRow'
@@ -13,6 +13,7 @@ import { PARAMETERS, defaultLabData, STATUS } from '../data/constants'
 import { scoreSummary } from '../lib/scoring'
 import { formatDate, readyDate, daysRemaining, serviceDate, isInService } from '../lib/outgassing'
 import { analyzeBatch, aiAnalystEnabled } from '../lib/aiClient'
+import { printBatchReport } from '../lib/reportPrint'
 
 export default function BatchDetail({ batch, profiles = [], beans = [], onClose, onUpdate }) {
   const [scores, setScores] = useState(batch?.scores || {})
@@ -134,6 +135,16 @@ export default function BatchDetail({ batch, profiles = [], beans = [], onClose,
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                {/* экспорт готового анализа в PDF (А4-протокол) */}
+                {(batch._status === STATUS.DONE || batch._status === STATUS.ANALYSIS) && (
+                  <button
+                    onClick={() => printBatchReport(batch, profile)}
+                    title="Выгрузить протокол в PDF (А4)"
+                    className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-white/20 bg-white/10 px-4 py-3 text-sm font-medium text-cream transition hover:bg-white/20"
+                  >
+                    <FileDown size={16} /> PDF
+                  </button>
+                )}
                 {/* запуск в работу: доступен после анализа и 10-дневного допуска */}
                 {!isOutgassing && isInService(batch) && !batch.in_service_at && (
                   <button

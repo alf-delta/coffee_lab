@@ -18,6 +18,8 @@ create table if not exists public.batches (
   bellwether_profile_id   text default '',
   bellwether_batch_number integer,
   green_bean_id           text default '',
+  -- лот склада, с которого списано зелёное на эту жарку (трассировка)
+  green_lot_id            text default '',
   green_weight_kg         numeric,
   roasted_weight_kg       numeric,
   -- замеры зелёного на момент жарки (Omix Plus по этой закладке)
@@ -46,6 +48,7 @@ create table if not exists public.batches (
 -- Миграция существующих установок (create table выше не трогает старые таблицы):
 alter table public.batches add column if not exists ai_analysis    jsonb;
 alter table public.batches add column if not exists ai_analyzed_at timestamptz;
+alter table public.batches add column if not exists green_lot_id    text default '';
 
 create index if not exists batches_created_at_idx
   on public.batches (created_at desc);
@@ -119,10 +122,13 @@ create table if not exists public.green_beans (
   role           text default '',
   story          text default '',
   hero           boolean not null default false,
+  -- порог уведомления «заканчивается», кг (правится при приходе)
+  low_stock_kg   numeric default 2,
   created_at     timestamptz not null default now()
 );
 
 alter table public.green_beans enable row level security;
+alter table public.green_beans add column if not exists low_stock_kg numeric default 2;
 
 drop policy if exists "anon full access" on public.green_beans;
 drop policy if exists "authenticated access" on public.green_beans;
@@ -174,3 +180,31 @@ values
    'Swiss Water — 100% химически чистая декофеинизация: первый батч насыщает воду ароматами и вымывает кофеин, последующие теряют только кофеин — ароматический профиль сохраняется полностью. Omni roast: подходит и для фильтра, и для эспрессо. Фактор удивления для гостей, ожидающих плоский decaf. Меню-сюрприз зала.',
    false)
 on conflict (id) do nothing;
+
+-- ── Учёт зерна: лоты (партии прихода) ────────────────────────
+-- Зерно хранится маленькими партиями; при приходе фиксируем массу + замеры
+-- зелёного. Остаток (remaining_kg) списывается жаркой и правится вручную.
+create table if not exists public.bean_lots (
+  id             text primary key,
+  bean_id        text not null,
+  received_at    date,
+  received_kg    numeric not null default 0,
+  remaining_kg   numeric not null default 0,
+  moisture       numeric,
+  water_activity numeric,
+  density        numeric,
+  note           text default '',
+  created_at     timestamptz not null default now()
+);
+
+create index if not exists bean_lots_bean_idx on public.bean_lots (bean_id);
+
+alter table public.bean_lots enable row level security;
+drop policy if exists "anon full access" on public.bean_lots;
+drop policy if exists "authenticated access" on public.bean_lots;
+create policy "authenticated access"
+  on public.bean_lots
+  for all
+  to authenticated
+  using (true)
+  with check (true);

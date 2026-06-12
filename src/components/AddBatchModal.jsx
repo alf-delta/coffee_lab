@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Settings2, Bean, FlaskRound } from 'lucide-react'
+import { X, Settings2, Bean, FlaskRound, Package, AlertTriangle } from 'lucide-react'
 import {
   ROAST_LEVEL_LABELS,
   PROCESSING_METHODS,
@@ -13,8 +13,16 @@ import {
   defaultGreenQC,
   roastLevelFromAgtron,
 } from '../data/constants'
+import { activeLots, lotRemaining } from '../lib/inventory'
+import { formatDate } from '../lib/outgassing'
 
 const today = () => new Date().toISOString().slice(0, 10)
+
+// green QC партии по умолчанию берётся со склада (из лота)
+const qcFromLot = (lot) =>
+  lot
+    ? { green_moisture: lot.moisture ?? '', green_water_activity: lot.water_activity ?? '', green_density: lot.density ?? '' }
+    : {}
 
 const field =
   'w-full rounded-2xl border border-white/60 bg-white/55 px-4 py-2.5 text-sm text-espresso outline-none transition focus:border-gold/60 focus:bg-white/80 focus:ring-2 focus:ring-gold/25 placeholder:text-coffee-soft/50'
@@ -23,6 +31,7 @@ export default function AddBatchModal({
   open,
   profiles = [],
   beans = [],
+  lots = [],
   initialBeanId = '',
   onClose,
   onCreate,
@@ -34,6 +43,7 @@ export default function AddBatchModal({
   // лениво инициализируем форму при открытии (с предвыбранным зерном из каталога)
   if (open && !form) {
     const b = beans.find((x) => x.id === initialBeanId)
+    const firstLot = b ? activeLots(b.id, lots)[0] : null
     setForm({
       name: b ? b.name : '',
       origin: b ? b.origin || '' : '',
@@ -43,25 +53,37 @@ export default function AddBatchModal({
       outgassing_days: OUTGASSING_ANALYSIS_DAYS,
       service_days: SERVICE_RELEASE_DAYS,
       green_bean_id: b ? b.id : '',
+      green_lot_id: firstLot ? firstLot.id : '',
       bellwether_profile_id: '',
       green_weight_kg: 2.7,
       roasted_weight_kg: '',
       ...defaultGreenQC(),
+      ...qcFromLot(firstLot),
     })
   }
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
-  // Выбор зерна из каталога автозаполняет название, происхождение и обработку
+  // Выбор зерна: автозаполняет паспорт + берёт активный лот со склада (FIFO)
+  // и подтягивает его green QC по умолчанию
   const selectBean = (id) => {
     const b = beans.find((x) => x.id === id)
+    const lot = b ? activeLots(b.id, lots)[0] : null
     setForm((f) => ({
       ...f,
       green_bean_id: id,
+      green_lot_id: lot ? lot.id : '',
       name: b && !f.name.trim() ? b.name : f.name,
       origin: b ? b.origin || f.origin : f.origin,
       process: b && b.process ? b.process : f.process,
+      ...(lot ? qcFromLot(lot) : {}),
     }))
+  }
+
+  // Выбор лота со склада: подтягивает его параметры зелёного
+  const selectLot = (id) => {
+    const lot = lots.find((l) => l.id === id)
+    setForm((f) => ({ ...f, green_lot_id: id, ...qcFromLot(lot) }))
   }
 
   // Выбор профиля Bellwether автозаполняет уровень обжарки по целевому Agtron
@@ -76,6 +98,11 @@ export default function AddBatchModal({
   }
 
   const valid = form && form.name.trim() && form.bellwether_profile_id
+
+  // лоты выбранного сорта + контроль списания
+  const lotsForBean = form?.green_bean_id ? activeLots(form.green_bean_id, lots) : []
+  const selLot = lots.find((l) => l.id === form?.green_lot_id) || null
+  const overdraw = selLot && Number(form?.green_weight_kg) > lotRemaining(selLot)
 
   const submit = (e) => {
     e.preventDefault()
@@ -169,13 +196,47 @@ export default function AddBatchModal({
                 </select>
               </div>
 
-              {/* ── Входной QC зелёного (замеры на момент жарки) ── */}
+              {/* ── Лот со склада: списание + параметры по умолчанию ── */}
+              {form.green_bean_id && (
+                <div>
+                  <label className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-coffee-soft">
+                    <Package size={13} className="text-amber" /> Лот со склада
+                  </label>
+                  {lotsForBean.length > 0 ? (
+                    <>
+                      <select className={field} value={form.green_lot_id} onChange={(e) => selectLot(e.target.value)}>
+                        {lotsForBean.map((l) => (
+                          <option key={l.id} value={l.id}>
+                            {formatDate(l.received_at)} · остаток {lotRemaining(l).toFixed(1)} кг
+                            {l.moisture ? ` · вл. ${l.moisture}%` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {selLot && (
+                        <p className={`mt-1.5 text-[11px] leading-snug ${overdraw ? 'text-red-600' : 'text-coffee-soft/70'}`}>
+                          {overdraw ? (
+                            <><AlertTriangle size={11} className="-mt-0.5 mr-1 inline" />Списываем {form.green_weight_kg} кг — больше остатка лота ({lotRemaining(selLot).toFixed(1)} кг)</>
+                          ) : (
+                            `Параметры зелёного подставлены из лота; при сохранении ${form.green_weight_kg || 0} кг спишутся со склада.`
+                          )}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="rounded-xl bg-coffee/8 px-3 py-2 text-[11px] leading-snug text-coffee-soft">
+                      Нет остатка на складе по этому сорту — параметры зелёного введите вручную (списания не будет).
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* ── Входной QC зелёного (по умолчанию со склада, редактируемо) ── */}
               <div className="rounded-2xl border border-coffee/12 bg-white/30 p-4">
                 <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-coffee-soft">
                   <FlaskRound size={13} className="text-amber" /> Анализ зелёного · Omix Plus
                 </div>
                 <p className="mb-3 text-[11px] leading-snug text-coffee-soft/70">
-                  Замеры этой закладки перед жаркой — влажность и Aw зависят от возраста и хранения зерна.
+                  По умолчанию — из выбранного лота; правьте, если зерно подсохло/изменилось.
                 </p>
                 <div className="grid grid-cols-3 items-end gap-3">
                   {GREEN_QC_METRICS.map((m) => (

@@ -1,4 +1,5 @@
 import { SUPABASE_URL, SUPABASE_ANON_KEY, isSupabaseConfigured } from './supabase'
+import { totalScore, grade as gradeOf } from './scoring'
 
 // Клиент оркестратора roast-analyst (edge-функция на Claude, заземлённая на
 // корпус roster_kno). Команды и их схемы живут на стороне функции —
@@ -40,7 +41,15 @@ export async function runPipeline(pipeline, payload, { signal } = {}) {
 // Простой путь — одна команда (Sonnet), быстрый и связный.
 export async function analyzeBatch(batch, profile, opts) {
   const result = await runCommand('analyze_batch', { batch, profile }, opts)
-  return result && typeof result === 'object' ? result : null
+  if (!result || typeof result !== 'object') return null
+  // score/grade считает КОД (команда их не возвращает по дизайну).
+  // verdict иногда приходит строкой — распарсить перед впрыском.
+  let v = result.verdict
+  if (typeof v === 'string') { try { v = JSON.parse(v) } catch { v = {} } }
+  if (!v || typeof v !== 'object') v = {}
+  const total = totalScore(batch?.scores || {})
+  result.verdict = { ...v, score: total, grade: gradeOf(total).label }
+  return result
 }
 
 // Тот же контракт Q_REPORT, но многомодельным пайплайном (curve→chemistry→

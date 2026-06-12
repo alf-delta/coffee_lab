@@ -89,7 +89,10 @@ function batchDigest(p: Record<string, any>): string {
   lines.push(`Отдых после обжарки: ${b.outgassing_days ?? '—'} дн (порог анализа)`)
   if (b.green_weight_kg != null || b.roasted_weight_kg != null)
     lines.push(`Вес: зелёное ${b.green_weight_kg ?? '—'} кг → обжаренное ${b.roasted_weight_kg ?? '—'} кг`)
-  lines.push('Приборы (DiFluid): ' + JSON.stringify(lab))
+  if (b.green_moisture != null || b.green_water_activity != null || b.green_density != null)
+    lines.push(`QC ЗЕЛЁНОГО на момент жарки: влажность ${b.green_moisture ?? '—'}% (норма 10–12), Aw ${b.green_water_activity ?? '—'} (норма 0.50–0.55), плотность ${b.green_density ?? '—'} г/л`)
+  // ВАЖНО: lab_data.moisture — влажность ОБЖАРЕННОГО зерна (норма ~2–4%), НЕ зелёного (10–12%)
+  lines.push('Приборы ОБЖАРЕННОГО зерна и напитка (DiFluid Omix Plus / R2 Extract; moisture = влажность обжаренного, норма ~2–4%): ' + JSON.stringify(lab))
   lines.push('Органолептика (1–10): ' + JSON.stringify(b.scores ?? {}))
   if (Array.isArray(b.flavors) && b.flavors.length) lines.push('Дескрипторы (колесо SCA): ' + b.flavors.join(', '))
   if (prof) {

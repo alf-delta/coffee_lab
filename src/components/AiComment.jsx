@@ -1,8 +1,10 @@
+import { useState, useEffect } from 'react'
 import {
-  Sparkles, CheckCircle2, AlertTriangle, Info, Lightbulb, RefreshCw, Loader2, Wrench, ArrowRight,
+  Sparkles, CheckCircle2, AlertTriangle, Info, Lightbulb, RefreshCw, Loader2, Wrench, ArrowRight, Check,
 } from 'lucide-react'
 import { analyzeFallback, kbCitation } from '../lib/knowledge'
 import { normalizeReport, groupByDomain, DECISIONS, ACTION_TARGETS } from '../lib/qreport'
+import { totalScore, grade as gradeOf } from '../lib/scoring'
 
 const TONE = {
   good: { color: '#7cc18d', Icon: CheckCircle2 },
@@ -21,6 +23,64 @@ const findingStyle = (color) => ({
   borderLeft: `3px solid ${color}`,
 })
 
+// Этапный индикатор на время генерации. Этапы условные (под капотом один
+// вызов модели) — продвигаются по оценочному таймеру, чтобы ожидание не было
+// слепым. EST_S — типичная длительность разбора.
+const PHASES = [
+  { label: 'Читаю приборы и кривую', at: 0 },
+  { label: 'Сверяю с профилем Bellwether', at: 3 },
+  { label: 'Кручу сенсорику и экстракцию', at: 6 },
+  { label: 'Собираю вердикт', at: 9 },
+]
+const EST_S = 12
+
+function AnalyzingStepper() {
+  const [t, setT] = useState(0)
+  useEffect(() => {
+    const start = Date.now()
+    const id = setInterval(() => setT((Date.now() - start) / 1000), 200)
+    return () => clearInterval(id)
+  }, [])
+  let active = 0
+  for (let i = 0; i < PHASES.length; i++) if (t >= PHASES[i].at) active = i
+  const pct = Math.min(95, (t / EST_S) * 100)
+  return (
+    <div className="rounded-xl bg-white/[0.05] p-3">
+      <div className="mb-2 flex items-center justify-between text-[11px]">
+        <span className="font-semibold text-gold-soft">Monoblend Q разбирает партию</span>
+        <span className="tabular-nums text-latte/60">
+          {t < EST_S ? `${t.toFixed(0)} с · обычно ~${EST_S} с` : 'почти готово…'}
+        </span>
+      </div>
+      <div className="mb-2.5 h-1 overflow-hidden rounded-full bg-white/10">
+        <div className="h-full rounded-full bg-gold-soft transition-all duration-200" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="space-y-1">
+        {PHASES.map((p, i) => {
+          const done = i < active
+          const cur = i === active
+          return (
+            <div key={p.label} className="flex items-center gap-2 text-[11px]">
+              <span className="grid size-4 shrink-0 place-items-center">
+                {done ? (
+                  <Check size={12} className="text-[#7cc18d]" />
+                ) : cur ? (
+                  <Loader2 size={12} className="animate-spin text-gold-soft" />
+                ) : (
+                  <span className="size-1.5 rounded-full bg-white/25" />
+                )}
+              </span>
+              <span className={done ? 'text-latte/50 line-through' : cur ? 'text-cream' : 'text-latte/40'}>
+                {p.label}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export default function AiComment({ batch, profile, pending = false, onReanalyze = null }) {
   // Источник: персистентный разбор Monoblend Q (LLM/пайплайн) если есть,
   // иначе детерминированный fallback из knowledge.js. Обе формы → один контракт.
@@ -29,6 +89,9 @@ export default function AiComment({ batch, profile, pending = false, onReanalyze
 
   const verdict = report?.verdict
   const dec = verdict ? DECISIONS[verdict.decision] : null
+  // балл/грейд — всегда из batch.scores (код владеет числом), а не из модели
+  const total = totalScore(batch?.scores || {})
+  const gradeLabel = gradeOf(total).label
   const groups = groupByDomain(report?.findings)
   const actions = report?.actions || []
   const gaps = report?.data_gaps || []
@@ -67,13 +130,16 @@ export default function AiComment({ batch, profile, pending = false, onReanalyze
 
       {/* тело: вердикт → действия → доказательства → пробелы (внутренний скролл) */}
       <div className="-mr-1.5 mt-2.5 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1.5">
+        {/* ── индикатор этапов на время генерации ── */}
+        {pending && <AnalyzingStepper />}
+
         {/* ── ВЕРДИКТ ── */}
         {verdict && (
           <div className="rounded-xl p-3" style={findingStyle(dec.tint)}>
             <div className="flex items-center gap-3">
               <div className="leading-none">
                 <span className="font-display text-4xl tabular-nums" style={{ color: dec.tint }}>
-                  {verdict.score || '—'}
+                  {total || '—'}
                 </span>
                 <span className="ml-1 text-xs text-latte/70">/ 100</span>
               </div>
@@ -85,7 +151,7 @@ export default function AiComment({ batch, profile, pending = false, onReanalyze
                   >
                     {dec.label}
                   </span>
-                  {verdict.grade && <span className="text-[11px] text-latte/80">{verdict.grade}</span>}
+                  {total > 0 && <span className="text-[11px] text-latte/80">{gradeLabel}</span>}
                 </div>
                 {verdict.headline && (
                   <p className="mt-1 text-[12px] leading-snug text-cream">{verdict.headline}</p>

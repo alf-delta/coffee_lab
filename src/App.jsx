@@ -13,10 +13,12 @@ import {
   listBatches, createBatch, updateBatch, deleteBatch,
   listProfiles, createProfile, updateProfile, deleteProfile,
   listBeans, createBean, updateBean, deleteBean,
+  listLots, createLot, updateLot, deleteLot,
   storageMode,
 } from './lib/storage'
 import { authEnabled, getSession, onAuthChange, signOut } from './lib/auth'
 import { effectiveStatus, readyDate, serviceDate, formatDate } from './lib/outgassing'
+import { lowStockCount } from './lib/inventory'
 import { STATUS } from './data/constants'
 
 const pad = (n) => String(n).padStart(2, '0')
@@ -37,6 +39,7 @@ export default function App() {
   const [batches, setBatches] = useState([])
   const [profiles, setProfiles] = useState([])
   const [beans, setBeans] = useState([])
+  const [lots, setLots] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [selectedDay, setSelectedDay] = useState(null)
@@ -67,11 +70,12 @@ export default function App() {
   useEffect(() => {
     if (!session) return
     setLoading(true)
-    Promise.all([listBatches(), listProfiles(), listBeans()])
-      .then(([b, p, g]) => {
+    Promise.all([listBatches(), listProfiles(), listBeans(), listLots()])
+      .then(([b, p, g, l]) => {
         setBatches(b)
         setProfiles(p)
         setBeans(g)
+        setLots(l)
       })
       .catch((e) => console.error('Ошибка загрузки', e))
       .finally(() => setLoading(false))
@@ -94,6 +98,16 @@ export default function App() {
   const handleCreate = async (data) => {
     setAdding(false)
     setRoastBeanId('')
+    // списание зелёного со склада (с выбранного лота)
+    if (data.green_lot_id && data.green_weight_kg) {
+      const used = Number(data.green_weight_kg) || 0
+      const lot = lots.find((l) => l.id === data.green_lot_id)
+      if (lot) {
+        const remaining = Math.max(0, (Number(lot.remaining_kg) || 0) - used)
+        setLots((prev) => prev.map((l) => (l.id === lot.id ? { ...l, remaining_kg: remaining } : l)))
+        updateLot(lot.id, { remaining_kg: remaining }).catch((e) => console.error(e))
+      }
+    }
     const tmpId = 'tmp-' + Date.now()
     setBatches((prev) => [{ ...data, id: tmpId, _optimistic: true }, ...prev])
     try {
@@ -177,6 +191,34 @@ export default function App() {
     }
   }
 
+  // ── Учёт зерна: лоты (приход / корректировка остатков) ─────
+  const handleLotCreate = async (beanId, data) => {
+    try {
+      const row = await createLot({ ...data, bean_id: beanId })
+      setLots((prev) => [row, ...prev])
+    } catch (e) {
+      console.error(e)
+    }
+  }
+  const handleLotUpdate = async (id, patch) => {
+    setLots((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)))
+    try {
+      await updateLot(id, patch)
+    } catch (e) {
+      console.error(e)
+    }
+  }
+  const handleLotDelete = async (id) => {
+    setLots((prev) => prev.filter((l) => l.id !== id))
+    try {
+      await deleteLot(id)
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const lowStock = lowStockCount(beans, lots)
+
   // ── Гейт авторизации (только в supabase-режиме) ──
   if (authEnabled && session === undefined) {
     return (
@@ -210,10 +252,19 @@ export default function App() {
           <motion.button
             whileTap={{ scale: 0.96 }}
             onClick={() => setBeansOpen(true)}
-            className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-coffee/15 bg-white/50 px-4 py-3 text-sm font-medium text-coffee transition hover:bg-white/80"
+            title={lowStock > 0 ? `${lowStock} сорт(ов) на исходе` : 'Учёт зерна'}
+            className="relative inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-coffee/15 bg-white/50 px-4 py-3 text-sm font-medium text-coffee transition hover:bg-white/80"
           >
             <Bean size={17} />
             <span className="hidden sm:inline">Зерно</span>
+            {lowStock > 0 && (
+              <span
+                className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full text-[10px] font-bold text-white"
+                style={{ background: '#e0814f' }}
+              >
+                {lowStock}
+              </span>
+            )}
           </motion.button>
           <motion.button
             whileTap={{ scale: 0.96 }}
@@ -303,6 +354,7 @@ export default function App() {
         open={adding}
         profiles={profiles}
         beans={beans}
+        lots={lots}
         initialBeanId={roastBeanId}
         onClose={() => {
           setAdding(false)
@@ -337,10 +389,14 @@ export default function App() {
         open={beansOpen}
         beans={beans}
         batches={enriched}
+        lots={lots}
         onClose={() => setBeansOpen(false)}
         onCreate={handleBeanCreate}
         onUpdate={handleBeanUpdate}
         onDelete={handleBeanDelete}
+        onLotCreate={handleLotCreate}
+        onLotUpdate={handleLotUpdate}
+        onLotDelete={handleLotDelete}
         onRoast={(beanId) => {
           setBeansOpen(false)
           setRoastBeanId(beanId)

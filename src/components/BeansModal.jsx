@@ -2,11 +2,16 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Plus, Pencil, Trash2, ArrowLeft, MapPin, Star, Flame,
-  Mountain, Truck, Sprout, Tractor, CalendarDays, FlaskConical,
+  Mountain, Truck, Sprout, Tractor, CalendarDays, FlaskConical, Package, Check,
 } from 'lucide-react'
-import { defaultBean, PROCESSING_METHODS } from '../data/constants'
+import { defaultBean, defaultLot, PROCESSING_METHODS } from '../data/constants'
 import { totalScore } from '../lib/scoring'
 import { formatDate } from '../lib/outgassing'
+import { beanLots, lotRemaining, stockState, STOCK_TONE, DEFAULT_LOW_STOCK_KG } from '../lib/inventory'
+
+// тёмные варианты тонов остатка для текста на светлом фоне
+const STOCK_TEXT = { ok: '#3f7a4f', low: '#9a6b1f', out: '#b3372b' }
+const numOrNull = (v) => (v === '' || v == null ? null : Number(v))
 
 const field =
   'w-full rounded-2xl border border-white/60 bg-white/55 px-4 py-2.5 text-sm text-espresso outline-none transition focus:border-gold/60 focus:bg-white/80 focus:ring-2 focus:ring-gold/25 placeholder:text-coffee-soft/50'
@@ -61,7 +66,181 @@ function NoteChips({ notes, max = 99, className = '' }) {
   )
 }
 
-export default function BeansModal({ open, beans, batches = [], onClose, onCreate, onUpdate, onDelete, onRoast }) {
+// Чип остатка (для карточки списка и деталки)
+function StockChip({ bean, lots, className = '' }) {
+  const ss = stockState(bean, lots)
+  const t = STOCK_TONE[ss.level]
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${className}`}
+      style={{ background: `color-mix(in srgb, ${t.color} 22%, white)`, color: STOCK_TEXT[ss.level] }}
+      title={`${t.label} · порог ${ss.threshold} кг`}
+    >
+      <Package size={11} />
+      {ss.level === 'out' ? 'нет в наличии' : `${ss.remaining.toFixed(1)} кг`}
+    </span>
+  )
+}
+
+// Учёт по сорту: остаток, приход, лоты, корректировка массы/влажности
+function BeanInventory({ bean, lots, onLotCreate, onLotUpdate, onLotDelete, onBeanUpdate }) {
+  const rows = beanLots(bean.id, lots).sort((a, b) => String(b.received_at).localeCompare(String(a.received_at)))
+  const ss = stockState(bean, lots)
+  const [intake, setIntake] = useState(null)
+  const [editId, setEditId] = useState(null)
+  const [editForm, setEditForm] = useState(null)
+
+  const startIntake = () => setIntake({ ...defaultLot(), low_stock_kg: bean.low_stock_kg ?? DEFAULT_LOW_STOCK_KG })
+  const saveIntake = () => {
+    if (!(Number(intake.received_kg) > 0)) return
+    onLotCreate(bean.id, {
+      received_at: intake.received_at,
+      received_kg: Number(intake.received_kg),
+      moisture: numOrNull(intake.moisture),
+      water_activity: numOrNull(intake.water_activity),
+      density: numOrNull(intake.density),
+      note: intake.note?.trim() || '',
+    })
+    const thr = Number(intake.low_stock_kg)
+    if (thr > 0 && thr !== bean.low_stock_kg) onBeanUpdate(bean.id, { low_stock_kg: thr })
+    setIntake(null)
+  }
+  const startEdit = (l) => {
+    setEditId(l.id)
+    setEditForm({ remaining_kg: lotRemaining(l), moisture: l.moisture ?? '', water_activity: l.water_activity ?? '', density: l.density ?? '' })
+  }
+  const saveEdit = () => {
+    onLotUpdate(editId, {
+      remaining_kg: Math.max(0, Number(editForm.remaining_kg) || 0),
+      moisture: numOrNull(editForm.moisture),
+      water_activity: numOrNull(editForm.water_activity),
+      density: numOrNull(editForm.density),
+    })
+    setEditId(null)
+    setEditForm(null)
+  }
+  const iset = (k, v) => setIntake((f) => ({ ...f, [k]: v }))
+  const eset = (k, v) => setEditForm((f) => ({ ...f, [k]: v }))
+  const inp = 'w-full rounded-xl border border-coffee/15 bg-white/70 px-3 py-2 text-sm tabular-nums text-espresso outline-none focus:border-gold/60 focus:ring-2 focus:ring-gold/20'
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-coffee-soft">
+          <Package size={14} className="text-amber" /> Склад
+          <StockChip bean={bean} lots={lots} />
+        </div>
+        {!intake && (
+          <button
+            type="button"
+            onClick={startIntake}
+            className="inline-flex items-center gap-1.5 rounded-full bg-gold/15 px-3 py-1.5 text-xs font-semibold text-amber transition hover:bg-gold/25"
+          >
+            <Plus size={13} /> Приход
+          </button>
+        )}
+      </div>
+
+      {/* форма прихода */}
+      {intake && (
+        <div className="mb-3 rounded-2xl border border-gold/25 bg-gold/5 p-3">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <label className="text-[11px] text-coffee-soft">Масса, кг
+              <input type="number" min="0" step="0.1" autoFocus className={inp} value={intake.received_kg} onChange={(e) => iset('received_kg', e.target.value)} />
+            </label>
+            <label className="text-[11px] text-coffee-soft">Дата прихода
+              <input type="date" className={inp} value={intake.received_at} onChange={(e) => iset('received_at', e.target.value)} />
+            </label>
+            <label className="text-[11px] text-coffee-soft">Порог уведом., кг
+              <input type="number" min="0" step="0.1" className={inp} value={intake.low_stock_kg} onChange={(e) => iset('low_stock_kg', e.target.value)} />
+            </label>
+            <label className="text-[11px] text-coffee-soft">Влажность, %
+              <input type="number" min="0" step="0.1" className={inp} value={intake.moisture} onChange={(e) => iset('moisture', e.target.value)} />
+            </label>
+            <label className="text-[11px] text-coffee-soft">Aw
+              <input type="number" min="0" step="0.01" className={inp} value={intake.water_activity} onChange={(e) => iset('water_activity', e.target.value)} />
+            </label>
+            <label className="text-[11px] text-coffee-soft">Плотность, г/л
+              <input type="number" min="0" step="1" className={inp} value={intake.density} onChange={(e) => iset('density', e.target.value)} />
+            </label>
+          </div>
+          <input className={`${inp} mt-2`} placeholder="заметка к лоту (необязательно)" value={intake.note} onChange={(e) => iset('note', e.target.value)} />
+          <div className="mt-2 flex gap-2">
+            <button type="button" onClick={() => setIntake(null)} className="flex-1 rounded-full border border-coffee/15 bg-white/40 py-2 text-xs font-medium text-coffee transition hover:bg-white/70">Отмена</button>
+            <button type="button" onClick={saveIntake} disabled={!(Number(intake.received_kg) > 0)} className="btn-gold flex-1 rounded-full py-2 text-xs font-semibold transition hover:brightness-105 disabled:opacity-40">Внести на баланс</button>
+          </div>
+        </div>
+      )}
+
+      {/* лоты */}
+      {rows.length === 0 ? (
+        <p className="rounded-xl bg-coffee/8 px-3 py-2.5 text-xs text-coffee-soft">Остатков нет — внесите приход.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {rows.map((l) => {
+            const rem = lotRemaining(l)
+            const pct = l.received_kg ? Math.round((rem / Number(l.received_kg)) * 100) : 0
+            const editing = editId === l.id
+            return (
+              <div key={l.id} className="glass-soft rounded-xl p-3">
+                {editing ? (
+                  <div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <label className="text-[11px] text-coffee-soft">Остаток, кг
+                        <input type="number" min="0" step="0.1" autoFocus className={inp} value={editForm.remaining_kg} onChange={(e) => eset('remaining_kg', e.target.value)} />
+                      </label>
+                      <label className="text-[11px] text-coffee-soft">Влажность, %
+                        <input type="number" min="0" step="0.1" className={inp} value={editForm.moisture} onChange={(e) => eset('moisture', e.target.value)} />
+                      </label>
+                      <label className="text-[11px] text-coffee-soft">Aw
+                        <input type="number" min="0" step="0.01" className={inp} value={editForm.water_activity} onChange={(e) => eset('water_activity', e.target.value)} />
+                      </label>
+                      <label className="text-[11px] text-coffee-soft">Плотность
+                        <input type="number" min="0" step="1" className={inp} value={editForm.density} onChange={(e) => eset('density', e.target.value)} />
+                      </label>
+                    </div>
+                    <div className="mt-2 flex gap-2">
+                      <button type="button" onClick={() => { setEditId(null); setEditForm(null) }} className="flex-1 rounded-full border border-coffee/15 bg-white/40 py-1.5 text-xs font-medium text-coffee transition hover:bg-white/70">Отмена</button>
+                      <button type="button" onClick={saveEdit} className="btn-gold inline-flex flex-1 items-center justify-center gap-1.5 rounded-full py-1.5 text-xs font-semibold transition hover:brightness-105"><Check size={13} /> Сохранить</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2 text-sm">
+                        <span className="tabular-nums font-medium text-espresso">{rem.toFixed(1)} <span className="text-xs text-coffee-soft">/ {Number(l.received_kg).toFixed(1)} кг</span></span>
+                        <span className="text-xs text-coffee-soft">{formatDate(l.received_at)}</span>
+                      </div>
+                      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-coffee/10">
+                        <div className="h-full rounded-full bg-amber" style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-coffee-soft tabular-nums">
+                        {l.moisture != null && <span>вл. {l.moisture}%</span>}
+                        {l.water_activity != null && <span>Aw {l.water_activity}</span>}
+                        {l.density != null && <span>{l.density} г/л</span>}
+                        {l.note && <span className="text-coffee-soft/70">· {l.note}</span>}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button type="button" onClick={() => startEdit(l)} aria-label="Корректировать" title="Корректировка остатка/влажности" className="grid size-8 place-items-center rounded-full text-coffee-soft transition hover:bg-coffee/10 hover:text-coffee"><Pencil size={14} /></button>
+                      <button type="button" onClick={() => { if (confirm('Удалить лот?')) onLotDelete(l.id) }} aria-label="Удалить лот" className="grid size-8 place-items-center rounded-full text-coffee-soft transition hover:bg-red-500/10 hover:text-red-600"><Trash2 size={14} /></button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function BeansModal({
+  open, beans, batches = [], lots = [],
+  onClose, onCreate, onUpdate, onDelete,
+  onLotCreate, onLotUpdate, onLotDelete, onRoast,
+}) {
   // view: { mode: 'list' } | { mode: 'detail', id } | { mode: 'form', id: 'new' | id }
   const [view, setView] = useState({ mode: 'list' })
   const [form, setForm] = useState(null)
@@ -222,6 +401,7 @@ export default function BeansModal({ open, beans, batches = [], onClose, onCreat
                             <span className="rounded-full bg-coffee/10 px-2.5 py-0.5 font-medium text-coffee">
                               {b.process || '—'}
                             </span>
+                            <StockChip bean={b} lots={lots} />
                             {b.role && <span className="truncate text-coffee-soft">{b.role}</span>}
                           </div>
                           <NoteChips notes={b.flavor_notes} max={4} className="mt-2" />
@@ -313,6 +493,16 @@ export default function BeansModal({ open, beans, batches = [], onClose, onCreat
                     {b.story && (
                       <p className="text-sm leading-relaxed text-coffee">{b.story}</p>
                     )}
+
+                    {/* учёт зерна: остатки по лотам, приход, корректировка */}
+                    <BeanInventory
+                      bean={b}
+                      lots={lots}
+                      onLotCreate={onLotCreate}
+                      onLotUpdate={onLotUpdate}
+                      onLotDelete={onLotDelete}
+                      onBeanUpdate={onUpdate}
+                    />
 
                     <div>
                       <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-coffee-soft">

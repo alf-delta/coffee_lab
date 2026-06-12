@@ -359,3 +359,102 @@ export async function updateBean(id, patch) {
 export async function deleteBean(id) {
   return storageMode === 'supabase' ? remoteBeans.remove(id) : localBeans.remove(id)
 }
+
+// ── Учёт зерна: лоты (партии прихода) ─────────────────────────
+const LOTS_LS_KEY = 'monoblend.lots.v1'
+const LOTS_TABLE = 'bean_lots'
+
+// Демо-остатки для стартовых сортов (localStorage-режим)
+function seedLots() {
+  const now = Date.now()
+  const day = 86400000
+  const at = (d) => new Date(now - d * day).toISOString().slice(0, 10)
+  return [
+    { id: uid(), bean_id: 'caicedo_washed', received_at: at(20), received_kg: 15, remaining_kg: 11.4, moisture: 10.9, water_activity: 0.55, density: 710, note: '', created_at: new Date(now - 20 * day).toISOString() },
+    { id: uid(), bean_id: 'wush_wush', received_at: at(30), received_kg: 6, remaining_kg: 1.5, moisture: 10.6, water_activity: 0.53, density: 735, note: 'низкоурожайный — беречь', created_at: new Date(now - 30 * day).toISOString() },
+    { id: uid(), bean_id: 'black_honey', received_at: at(45), received_kg: 5, remaining_kg: 0, moisture: 11.2, water_activity: 0.56, density: 705, note: '', created_at: new Date(now - 45 * day).toISOString() },
+  ]
+}
+
+const localLots = {
+  list() {
+    try {
+      const raw = localStorage.getItem(LOTS_LS_KEY)
+      if (raw) return JSON.parse(raw)
+    } catch {
+      /* ignore */
+    }
+    const initial = seedLots()
+    localStorage.setItem(LOTS_LS_KEY, JSON.stringify(initial))
+    return initial
+  },
+  save(rows) {
+    localStorage.setItem(LOTS_LS_KEY, JSON.stringify(rows))
+  },
+  create(row) {
+    const rows = localLots.list()
+    rows.unshift(row)
+    localLots.save(rows)
+    return row
+  },
+  update(id, patch) {
+    const rows = localLots.list().map((r) => (r.id === id ? { ...r, ...patch } : r))
+    localLots.save(rows)
+    return rows.find((r) => r.id === id)
+  },
+  remove(id) {
+    localLots.save(localLots.list().filter((r) => r.id !== id))
+  },
+}
+
+const remoteLots = {
+  async list() {
+    const { data, error } = await supabase
+      .from(LOTS_TABLE)
+      .select('*')
+      .order('received_at', { ascending: true })
+    if (error) throw error
+    return data
+  },
+  async create(row) {
+    const { data, error } = await supabase.from(LOTS_TABLE).insert(row).select().single()
+    if (error) throw error
+    return data
+  },
+  async update(id, patch) {
+    const { data, error } = await supabase
+      .from(LOTS_TABLE)
+      .update(patch)
+      .eq('id', id)
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+  async remove(id) {
+    const { error } = await supabase.from(LOTS_TABLE).delete().eq('id', id)
+    if (error) throw error
+  },
+}
+
+export async function listLots() {
+  return storageMode === 'supabase' ? remoteLots.list() : localLots.list()
+}
+export async function createLot(data) {
+  // remaining стартует с полученной массы, если не задан явно
+  const received = Number(data.received_kg) || 0
+  const row = {
+    ...data,
+    received_kg: received,
+    remaining_kg: data.remaining_kg != null ? Number(data.remaining_kg) : received,
+    id: uid(),
+    created_at: new Date().toISOString(),
+  }
+  return storageMode === 'supabase' ? remoteLots.create(row) : localLots.create(row)
+}
+export async function updateLot(id, patch) {
+  return storageMode === 'supabase' ? remoteLots.update(id, patch) : localLots.update(id, patch)
+}
+export async function deleteLot(id) {
+  return storageMode === 'supabase' ? remoteLots.remove(id) : localLots.remove(id)
+}
