@@ -229,26 +229,37 @@ function buildHtml(batch, profile) {
 </body></html>`
 }
 
-// Открыть печатный документ и вызвать печать (Сохранить как PDF)
+// Печать протокола через скрытый iframe (без всплывающих окон → не блокируется
+// попап-блокировщиком, работает на десктопе и мобильных). Печать → «Сохранить как PDF».
 export function printBatchReport(batch, profile) {
   const html = buildHtml(batch, profile)
-  // без 'noopener' — с ним window.open возвращает null и в окно нельзя писать
-  const w = window.open('', '_blank', 'width=900,height=1200')
-  if (!w) {
-    alert('Разрешите всплывающие окна, чтобы выгрузить PDF')
-    return
+  const iframe = document.createElement('iframe')
+  iframe.setAttribute('aria-hidden', 'true')
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;'
+  document.body.appendChild(iframe)
+
+  const win = iframe.contentWindow
+  win.document.open()
+  win.document.write(html)
+  win.document.close()
+
+  const remove = () => {
+    if (iframe.parentNode) iframe.parentNode.removeChild(iframe)
   }
-  w.document.open()
-  w.document.write(html)
-  w.document.close()
-  // печать один раз, после загрузки документа (с подстраховкой по таймеру)
   let done = false
   const fire = () => {
-    if (done || w.closed) return
+    if (done) return
     done = true
-    w.focus()
-    w.print()
+    try {
+      win.focus()
+      win.print()
+    } catch {
+      /* ignore */
+    }
   }
-  w.onload = () => setTimeout(fire, 250)
+  // убрать iframe после печати; подстраховки по таймеру
+  win.onafterprint = () => setTimeout(remove, 500)
+  iframe.onload = () => setTimeout(fire, 250)
   setTimeout(fire, 800)
+  setTimeout(remove, 120000)
 }
